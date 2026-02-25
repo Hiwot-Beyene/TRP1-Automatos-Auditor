@@ -3,7 +3,10 @@
 Graph flow:
   START -> [repo_investigator, doc_analyst, vision_inspector] (parallel fan-out)
        -> evidence_aggregator (fan-in)
-       -> conditional: proceed -> END | skip -> END (error/skip unavailable artifacts)
+       -> conditional: proceed -> END | skip -> END (skip = Evidence Missing / Node Failure)
+
+Error handling: Skip is the primary path for missing evidence (fail fast). Transient failures
+(e.g. clone timeout) are retried with backoff inside sandboxed_clone; after retries exhausted we still skip.
 
 Judicial layer attachment (planned):
   evidence_aggregator -> conditional_edges:
