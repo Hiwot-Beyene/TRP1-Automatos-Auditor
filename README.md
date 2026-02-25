@@ -56,6 +56,23 @@ Contract tests for graph structure (fan-out, fan-in, evidence merge) can be run 
 uv run pytest tests/contract/test_detective_graph_parallelism.py -v
 ```
 
+## Testing (TDD)
+
+The project uses **Test-Driven Development**: write tests from contracts/specs first, then implement (Red–Green–Refactor). Test layout:
+
+- **Unit** (`tests/unit/`): state models, aggregator, detective nodes with mock state.
+- **Contract** (`tests/contract/`): graph topology and evidence merge from detective-graph contract.
+- **Integration** (`tests/integration/`): full graph invoke with minimal state.
+
+Run all tests:
+
+```bash
+uv sync   # installs pytest via dev-dependencies
+uv run pytest tests/ -v
+```
+
+See `specs/002-phase1-production-env/docs-testing.md` for the full TDD guide.
+
 ## Deliverables
 
 - **Interim report**: `reports/interim_report.pdf` (placeholder for interim submission).
