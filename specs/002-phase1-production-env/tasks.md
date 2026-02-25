@@ -65,6 +65,20 @@
 
 ---
 
+## Branch 008-web-ui
+
+**Purpose:** Web UI (Next.js + Tailwind) and FastAPI backend; input = repo URL or doc URL (either/or); rubric from UI. Logic unchanged per TRP1 Challenge and detective-graph contract.
+
+- [X] T021 [008] Add FastAPI app in `src/api.py`: POST /api/run with body repo_url?, pdf_path?, rubric_dimensions; invoke build_detective_graph().invoke(); return serialized evidences; CORS for frontend origin.
+- [X] T022 [008] Create Next.js app in `frontend/` with Tailwind; luxury modern look (typography, spacing, subtle gradients/shadows).
+- [X] T023 [008] Frontend: mode selector (Repo URL | Doc URL), single URL input, rubric input (textarea JSON or default rubric), Run button; call API; display evidences by dimension.
+
+---
+
+## Parallelism testing (TRP1 Challenge)
+
+- [X] T024 [008] Add contract tests in `tests/contract/test_detective_graph_parallelism.py`: assert fan-out (START → all three detectives), fan-in (all detectives → EvidenceAggregator → END), and integration (invoke with rubric for all artifacts → evidences merged from all three).
+
 ## Dependencies & execution order
 
 | Branch | Depends on | Merge order |
@@ -74,6 +88,7 @@
 | 004 | 002 | After 002 |
 | 005 | 002, 003, 004 | After 003 and 004 |
 | 007 | 002, 005 | After 005 |
+| 008 | 002, 007 | After 007 |
 
 **Checkpoints**
 
