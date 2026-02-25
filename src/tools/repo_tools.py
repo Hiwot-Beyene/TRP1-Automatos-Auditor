@@ -4,21 +4,35 @@ import ast
 import re
 import subprocess
 import tempfile
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 
 class RepoCloneError(Exception):
-    """Raised when clone fails: bad URL, auth, or timeout."""
+    """Raised when clone fails: bad URL, auth, or timeout (after retries)."""
 
 
 CLONE_TIMEOUT_SEC = 120
 GIT_LOG_TIMEOUT_SEC = 30
+MAX_CLONE_RETRIES = 2
+INITIAL_BACKOFF_SEC = 2.0
 
 _GIT_URL_PATTERN = re.compile(
     r"^https?://([^/]+/)+[^/]+/?$|^git@[^:]+:[^/]+/[^/]+\.git$"
 )
+
+
+def _is_transient_clone_error(stderr: str, stdout: str) -> bool:
+    s = (stderr + " " + stdout).lower()
+    if "timed out" in s or "timeout" in s:
+        return True
+    if "connection refused" in s or "connection reset" in s:
+        return True
+    if "could not resolve host" in s or "name or service not known" in s:
+        return True
+    return False
 
 
 def _sanitize_url(url: str) -> str:
@@ -30,7 +44,8 @@ def _sanitize_url(url: str) -> str:
 
 @contextmanager
 def sandboxed_clone(repo_url: str):
-    """Clone repo into a temp directory. Yields path. Raises RepoCloneError on failure."""
+    """Clone repo into a temp directory. Yields path. Raises RepoCloneError on failure.
+    Transient errors (timeout, connection) are retried with backoff; permanent errors (auth, not found) fail immediately."""
     url = _sanitize_url(repo_url)
     if not url:
         raise RepoCloneError("Repo URL is empty")
@@ -40,29 +55,46 @@ def sandboxed_clone(repo_url: str):
                 f"Invalid repo URL: not a recognized git URL (e.g. https://github.com/owner/repo)"
             )
     tmp = tempfile.TemporaryDirectory(prefix="auditor_clone_")
+    result = None
+    last_error: str | None = None
     try:
-        result = subprocess.run(
-            ["git", "clone", "--depth", "50", url, tmp.name],
-            capture_output=True,
-            text=True,
-            timeout=CLONE_TIMEOUT_SEC,
-            cwd=None,
-        )
-        if result.returncode != 0:
+        for attempt in range(MAX_CLONE_RETRIES + 1):
+            try:
+                result = subprocess.run(
+                    ["git", "clone", "--depth", "50", url, tmp.name],
+                    capture_output=True,
+                    text=True,
+                    timeout=CLONE_TIMEOUT_SEC,
+                    cwd=None,
+                )
+            except subprocess.TimeoutExpired:
+                last_error = "Clone timed out"
+                if attempt >= MAX_CLONE_RETRIES:
+                    raise RepoCloneError(
+                        f"git clone failed after {MAX_CLONE_RETRIES + 1} attempts: {last_error}"
+                    )
+                if attempt < MAX_CLONE_RETRIES:
+                    time.sleep(INITIAL_BACKOFF_SEC * (2**attempt))
+                continue
+            if result.returncode == 0:
+                yield tmp.name
+                return
             stderr = (result.stderr or "").strip()
             stdout = (result.stdout or "").strip()
+            last_error = stderr or stdout or "no output"
             if "could not read Username" in stderr or "Authentication failed" in stderr:
-                raise RepoCloneError(
-                    f"Git authentication failed: {stderr[:300]}"
-                )
-            if "Could not resolve host" in stderr or "Name or service not known" in stderr:
-                raise RepoCloneError(f"Invalid or unreachable host: {stderr[:300]}")
+                raise RepoCloneError(f"Git authentication failed: {stderr[:300]}")
             if "Repository not found" in stderr or "404" in stderr:
                 raise RepoCloneError(f"Repository not found or inaccessible: {stderr[:300]}")
-            raise RepoCloneError(
-                f"git clone failed (exit {result.returncode}): {stderr or stdout or 'no output'}"
-            )
-        yield tmp.name
+            if not _is_transient_clone_error(stderr, stdout) or attempt >= MAX_CLONE_RETRIES:
+                raise RepoCloneError(
+                    f"git clone failed (exit {result.returncode}): {last_error[:400]}"
+                )
+            if attempt < MAX_CLONE_RETRIES:
+                time.sleep(INITIAL_BACKOFF_SEC * (2**attempt))
+        raise RepoCloneError(
+            f"git clone failed: {last_error or 'unknown'}"
+        )
     finally:
         tmp.cleanup()
 
