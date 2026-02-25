@@ -14,7 +14,7 @@ Establish a typed, observable runtime and forensic detective layer for the Autom
 **Language/Version**: Python 3.10+  
 **Primary Dependencies**: LangGraph, LangChain, Pydantic; uv for package management  
 **Storage**: N/A (in-memory state; file-based rubric.json, PDF input)  
-**Testing**: pytest (optional for interim); contract tests in tests/contract/  
+**Testing**: pytest; TDD per [docs-testing.md](docs-testing.md): unit (`tests/unit/`), contract (`tests/contract/`), integration (`tests/integration/`). Write tests from contracts first, then implement.  
 **Target Platform**: Linux/macOS CLI; sandboxed git clone in temp dir  
 **Project Type**: cli (orchestrated agent graph)  
 **Performance Goals**: Single repo + PDF run in reasonable time; LangSmith traces for debugging  
