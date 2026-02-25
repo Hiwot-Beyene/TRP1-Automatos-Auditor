@@ -23,7 +23,12 @@
 
 All three detectives run in parallel; EvidenceAggregator runs once after all complete (LangGraph semantics: multiple edges into one node = sync when all predecessors done).
 
-## Conditional edges (optional for interim)
+## Parallelism testing (TRP1 Challenge)
+
+Parallelism is verified by contract tests in `tests/contract/test_detective_graph_parallelism.py`:
+
+- **Graph structure:** START has edges to all three detectives (fan-out); all three have an edge to EvidenceAggregator (fan-in); EvidenceAggregator has edge to END. Tests use the compiled graph’s `get_graph()` (e.g. networkx DiGraph) to assert topology.
+- **Integration:** Invoking the graph with `rubric_dimensions` covering `github_repo`, `pdf_report`, and `pdf_images` yields `evidences` containing keys from all three detectives, confirming reducer merge (operator.ior) and that all parallel branches contributed.
 
 - On clone failure or critical tool error: may route to EvidenceAggregator with partial evidences and error in state (or skip conditional and always proceed to EvidenceAggregator with whatever evidences exist).
 
