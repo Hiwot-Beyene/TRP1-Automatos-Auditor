@@ -9,6 +9,8 @@ dependencies = [
     "langchain>=0.3",
     "pydantic>=2.0",
     "pypdf>=4.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
 ]
 
 [project.optional-dependencies]
@@ -25,3 +27,7 @@ packages = ["src"]
 
 [tool.uv]
 dev-dependencies = []
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
