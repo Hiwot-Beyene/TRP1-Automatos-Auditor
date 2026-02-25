@@ -85,15 +85,15 @@ def run_parallelism_checks() -> list[dict[str, Any]]:
     except Exception as e:
         results.append({"name": "Fan-in to EvidenceAggregator", "passed": False, "message": str(e)})
 
-    # 4. EvidenceAggregator → END
+    # 4. EvidenceAggregator → END (conditional_edges may create multiple paths to END)
     try:
         end = _end_node(G)
         succ = set(G.successors("evidence_aggregator")) if hasattr(G, "successors") else {e[1] for e in G.edges() if e[0] == "evidence_aggregator"}
-        passed = end is not None and succ == {end}
+        passed = end is not None and end in succ
         results.append({
             "name": "EvidenceAggregator → END",
             "passed": passed,
-            "message": f"evidence_aggregator → {end}" if passed else f"Expected single edge to END, got {succ}",
+            "message": f"evidence_aggregator → {end}" if passed else f"Expected path to END, got {succ}",
         })
     except Exception as e:
         results.append({"name": "EvidenceAggregator → END", "passed": False, "message": str(e)})

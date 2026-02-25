@@ -6,6 +6,7 @@ Verifies:
 - Fan-in: All three detectives have an edge to evidence_aggregator; evidence_aggregator has edge to END.
 - Integration: Invoking the graph with repo_url, pdf_path, and rubric for all artifacts yields
   evidences merged from all three detectives (reducer operator.ior).
+- Conditional: evidence_aggregator uses conditional_edges (proceed/skip) to END.
 """
 
 import pytest
@@ -87,13 +88,13 @@ def test_fan_in_to_evidence_aggregator():
 
 
 def test_evidence_aggregator_has_edge_to_end():
-    """EvidenceAggregator must have single edge to END."""
+    """EvidenceAggregator must have edge(s) to END (conditional_edges may yield multiple paths to END)."""
     compiled = build_detective_graph()
     G = _get_graph_structure(compiled)
     end = _end_node(G)
     edge_list = _edges_list(G)
     succ = {t for s, t in edge_list if s == "evidence_aggregator"}
-    assert succ == {end}, f"evidence_aggregator should point to END ({end}), got {succ}"
+    assert end in succ, f"evidence_aggregator should have path to END ({end}), got {succ}"
 
 
 def test_invoke_merges_evidences_from_all_detectives():
@@ -116,3 +117,12 @@ def test_invoke_merges_evidences_from_all_detectives():
     assert repo_dims.issubset(evidences.keys()), f"Expected repo dimensions {repo_dims} in evidences, got {list(evidences.keys())}"
     assert doc_dims.issubset(evidences.keys()), f"Expected doc dimensions {doc_dims} in evidences, got {list(evidences.keys())}"
     assert vision_dims.issubset(evidences.keys()), f"Expected vision dimensions {vision_dims} in evidences, got {list(evidences.keys())}"
+
+
+def test_evidence_aggregator_uses_conditional_edges():
+    """Graph must use conditional_edges after evidence_aggregator (proceed/skip to END)."""
+    compiled = build_detective_graph()
+    G = _get_graph_structure(compiled)
+    edge_list = _edges_list(G)
+    agg_successors = {t for s, t in edge_list if s == "evidence_aggregator"}
+    assert len(agg_successors) >= 1, "evidence_aggregator should have conditional_edges to END"

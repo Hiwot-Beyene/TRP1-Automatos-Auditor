@@ -84,19 +84,19 @@ AgentState (TypedDict)
 
 ## 3. File and Folder Layout
 
-See phase specs for phase-specific files. Full layout: src/state.py, src/tools/repo_tools.py, src/tools/doc_tools.py, src/nodes/detectives.py, src/nodes/judges.py, src/nodes/justice.py, src/graph.py; pyproject.toml, .env.example, rubric.json; README.md, reports/, audit/.
+See phase specs for phase-specific files. Full layout: src/state.py, src/tools/repo_tools.py, src/tools/doc_tools.py, src/nodes/detectives.py, src/nodes/judges.py, src/nodes/justice.py, src/graph.py; pyproject.toml, .env.example, rubric.json (repo root); README.md, reports/, audit/. Explicit run command: `uv run python scripts/run_audit.py <repo_url> [pdf_path]`; rubric loaded from rubric.json (no user-supplied rubric in UI).
 
 ---
 
 ## 4. Tool Contracts
 
-RepoInvestigator: sandboxed clone, extract_git_history(path), analyze_graph_structure(path); AST or tree-sitter; no Regex. DocAnalyst: ingest_pdf(path), RAG-lite, cross-reference. VisionInspector: extract_images_from_pdf(path), vision model; implementation required, execution optional.
+RepoInvestigator: sandboxed clone (tempfile, subprocess.run with timeout and capture_output), extract_git_history(path), analyze_graph_structure(path) using AST (edges, decorators, inheritance; add_edge, add_conditional_edges, StateGraph, BaseModel, TypedDict, reducers); precise RepoCloneError for bad URL and auth failures. DocAnalyst: ingest_pdf(path), RAG-lite, cross-reference. VisionInspector: extract_images_from_pdf(path), vision model; implementation required, execution optional.
 
 ---
 
 ## 5. Graph Topology
 
-START → [RepoInvestigator || DocAnalyst || VisionInspector] → EvidenceAggregator → [per criterion: Prosecutor || Defense || TechLead] → ChiefJusticeNode → END. Conditional edges for Evidence Missing / Node Failure.
+START → [RepoInvestigator || DocAnalyst || VisionInspector] → EvidenceAggregator → conditional_edges (proceed | skip) → END. Judicial attachment (planned): proceed → [Prosecutor || Defense || TechLead] → ChiefJusticeNode → END; skip → END. Conditional edges for error handling and skipping unavailable artifacts.
 
 ---
 

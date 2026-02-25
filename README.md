@@ -1,11 +1,13 @@
 # TRP1-Automatos-Auditor
 
-Automaton Auditor — Digital Courtroom agent graph. Runs parallel detective nodes (RepoInvestigator, DocAnalyst, VisionInspector) and aggregates evidence; judicial layer (Judges, Chief Justice) is planned for later phases.
+Automaton Auditor — Digital Courtroom agent graph. Parallel detective nodes (RepoInvestigator, DocAnalyst, VisionInspector) fan-in to EvidenceAggregator; conditional edges handle proceed/skip. Judicial layer (Judges, Chief Justice) is planned; attachment point documented in `src/graph.py`.
+
+## Requirements
+
+- **Python**: 3.10+ (see `pyproject.toml` requires-python)
+- **Package manager**: [uv](https://docs.astral.sh/uv/)
 
 ## Setup
-
-- **Python**: 3.10+
-- **Package manager**: [uv](https://docs.astral.sh/uv/)
 
 ```bash
 # Install uv (if needed)
@@ -14,7 +16,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Clone and enter repo
 cd TRP1-Automatos-Auditor
 
-# Install dependencies
+# Install dependencies (creates/updates uv.lock)
 uv sync
 
 # Copy env template and set API keys (optional; for LangSmith and PDF/vision)
@@ -22,9 +24,25 @@ cp .env.example .env
 # Edit .env: set LANGCHAIN_API_KEY for tracing; add OPENAI/ANTHROPIC/GOOGLE keys if using PDF/vision.
 ```
 
-## Run the project (Web UI)
+Commit `uv.lock` so dependencies are reproducible.
 
-Run audits and parallelism tests from the **Web UI**.
+## Run the detective graph against a target repo
+
+**Explicit command** (no API/frontend):
+
+```bash
+# Repo only
+uv run python scripts/run_audit.py https://github.com/owner/repo
+
+# Repo + PDF report path
+uv run python scripts/run_audit.py https://github.com/owner/repo /path/to/report.pdf
+```
+
+Uses `rubric.json` (machine-readable rubric from TRP1 Challenge doc). Output is JSON with `evidences` keyed by dimension id.
+
+**Typical audit workflow**: 1) Clone target repo locally or use URL. 2) Run `scripts/run_audit.py <repo_url> [pdf_path]`. 3) Inspect evidences; later phases add Judges and Chief Justice to produce the final Markdown report.
+
+## Run the project (Web UI)
 
 1. **Start the API** (from repo root):
 
@@ -38,37 +56,33 @@ uv run uvicorn src.api:app --reload --port 8000
 cd frontend && npm install && npm run dev
 ```
 
-3. Open **http://localhost:3000**. The UI has **3 tabs** (per TRP1 Challenge: each audit type can use its own rubric):
+3. Open **http://localhost:3000**. Rubric is loaded from **rubric.json** (no user-editable rubric in the UI). Tabs:
 
-   - **Repository** — Repository URL + rubric (JSON). Run repo audit (RepoInvestigator). Result shown in the same tab.
-   - **Document** — Document/PDF URL + rubric (JSON). Run document audit (DocAnalyst, VisionInspector). Result shown in the same tab.
-   - **Parallelism** — Two blocks side by side: [Repo URL + rubric] and [Document URL + rubric]. One **Run repo + document together** sends both URLs and merges both rubrics in a single graph run (parallel detectives). Results are shown **for each**: repo result (evidences for `github_repo` dimensions) and document result (evidences for `pdf_report` / `pdf_images` dimensions).
+   - **Repository** — Repository URL. Run repo audit (RepoInvestigator). Result shows evidences for `github_repo` dimensions.
+   - **Document** — Document/PDF path or URL. Run document audit (DocAnalyst, VisionInspector).
+   - **Parallelism** — Repo URL + Document URL. One run executes both in parallel and shows merged evidences.
 
 Optional: in `frontend/.env.local` set `NEXT_PUBLIC_API_URL=http://localhost:8000` if the API runs on a different host/port.
 
-**Programmatic use** (optional): `from src.graph import build_detective_graph` then `graph.invoke({...})` with `repo_url`, `pdf_path`, `rubric_dimensions`. State is returned with aggregated `evidences`.
+**Programmatic use**: `from src.graph import build_detective_graph` then `graph.invoke({"repo_url": "...", "pdf_path": "...", "rubric_dimensions": [...]})`. State is returned with aggregated `evidences`. Load `rubric_dimensions` from `rubric.json` (see `src/api.py` `load_rubric_dimensions()`).
 
 ## Parallelism tests (TRP1 Challenge)
 
-Contract tests for graph structure (fan-out, fan-in, evidence merge) can be run via pytest:
+Contract tests for graph structure (fan-out, fan-in, conditional_edges, evidence merge):
 
 ```bash
 uv run pytest tests/contract/test_detective_graph_parallelism.py -v
 ```
 
-## Testing (TDD)
+## Testing
 
-The project uses **Test-Driven Development**: write tests from contracts/specs first, then implement (Red–Green–Refactor). Test layout:
-
-- **Unit** (`tests/unit/`): state models, aggregator, detective nodes with mock state.
-- **Contract** (`tests/contract/`): graph topology and evidence merge from detective-graph contract.
+- **Unit** (`tests/unit/`): state models, aggregator, detective nodes, repo_tools (bad URL, auth failure, AST graph analysis).
+- **Contract** (`tests/contract/`): graph topology, conditional edges, evidence merge.
 - **Integration** (`tests/integration/`): full graph invoke with minimal state.
 
 Run all tests:
 
 ```bash
-uv sync   # installs pytest via dev-dependencies
+uv sync
 uv run pytest tests/ -v
 ```
-
-

@@ -1,4 +1,7 @@
-"""FastAPI backend: POST /api/run to invoke detective graph. Rubric and repo/pdf from request body."""
+"""FastAPI backend: POST /api/run with rubric from rubric.json; GET /api/rubric."""
+
+import json
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,11 +20,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+RUBRIC_PATH = Path(__file__).resolve().parent.parent / "rubric.json"
+
+
+def load_rubric_dimensions():
+    """Load dimensions from rubric.json (documentation-defined constitution)."""
+    if not RUBRIC_PATH.is_file():
+        return []
+    try:
+        data = json.loads(RUBRIC_PATH.read_text(encoding="utf-8"))
+        return data.get("dimensions", [])
+    except (json.JSONDecodeError, OSError):
+        return []
+
 
 class RunRequest(BaseModel):
     repo_url: str = ""
     pdf_path: str = ""
-    rubric_dimensions: list[dict] = Field(..., min_length=1)
+    rubric_dimensions: list[dict] | None = Field(default=None, description="Optional override; if omitted, rubric.json dimensions are used.")
 
 
 class RunResponse(BaseModel):
@@ -46,6 +62,17 @@ def serialize_evidences(evidences: dict[str, list[Evidence]]) -> dict[str, list[
     return out
 
 
+@app.get("/api/rubric")
+def get_rubric():
+    """Return the machine-readable rubric from rubric.json (dimensions + synthesis_rules)."""
+    if not RUBRIC_PATH.is_file():
+        return {"dimensions": [], "synthesis_rules": {}}
+    try:
+        return json.loads(RUBRIC_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {"dimensions": [], "synthesis_rules": {}}
+
+
 @app.post("/api/run", response_model=RunResponse)
 def run_audit(req: RunRequest) -> RunResponse:
     if not req.repo_url.strip() and not req.pdf_path.strip():
@@ -53,11 +80,17 @@ def run_audit(req: RunRequest) -> RunResponse:
             status_code=400,
             detail="Provide at least one of repo_url or pdf_path",
         )
+    rubric_dimensions = req.rubric_dimensions if req.rubric_dimensions is not None else load_rubric_dimensions()
+    if not rubric_dimensions:
+        raise HTTPException(
+            status_code=500,
+            detail="No rubric dimensions (rubric.json missing or empty)",
+        )
     graph = build_detective_graph()
     state = graph.invoke({
         "repo_url": req.repo_url.strip(),
         "pdf_path": req.pdf_path.strip(),
-        "rubric_dimensions": req.rubric_dimensions,
+        "rubric_dimensions": rubric_dimensions,
     })
     evidences = state.get("evidences") or {}
     return RunResponse(evidences=serialize_evidences(evidences))
