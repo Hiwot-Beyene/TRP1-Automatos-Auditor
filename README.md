@@ -24,7 +24,21 @@ cp .env.example .env
 
 ## Run the detective graph
 
-Invoke the graph with a target repo URL (and optionally a PDF report path and rubric dimensions). State is returned with aggregated `evidences`.
+**Interactive run (prompts for Repo URL and doc URL):**
+
+```bash
+uv run python -m src
+```
+
+You will be asked:
+- **Enter Repo URL:** e.g. `https://github.com/owner/target-repo`
+- **Enter doc URL:** path or URL to the PDF report (or leave blank to skip)
+
+The graph then runs and prints a summary of evidences by dimension.
+
+---
+
+**Programmatic run:** invoke the graph with a target repo URL (and optionally a PDF report path and rubric dimensions). State is returned with aggregated `evidences`.
 
 ```bash
 uv run python -c "
@@ -56,6 +70,37 @@ state = graph.invoke({
 })
 # state["evidences"] — aggregated by dimension after all detectives + EvidenceAggregator
 ```
+
+## Web UI
+
+A Next.js frontend (Tailwind) lets you run audits by **Repo URL** or **Doc URL** and supply the rubric as JSON in the UI.
+
+1. **Start the API** (from repo root):
+
+```bash
+uv run uvicorn src.api:app --reload --port 8000
+```
+
+2. **Start the frontend** (in another terminal):
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+3. Open **http://localhost:3000**. Choose **Repo URL** or **Doc URL**, enter the URL, paste or edit the rubric JSON (or use "Load default"), then click **Run audit**. Results appear as evidence by dimension.
+
+Optional: in `frontend/.env.local` set `NEXT_PUBLIC_API_URL=http://localhost:8000` if the API runs on a different host/port.
+
+## Parallelism tests (TRP1 Challenge)
+
+Contract tests verify detective graph fan-out/fan-in and evidence merge per the challenge doc:
+
+```bash
+uv sync
+uv run pytest tests/contract/test_detective_graph_parallelism.py -v
+```
+
+Tests assert: START fans out to all three detectives; all three feed into EvidenceAggregator; EvidenceAggregator → END; and invoking with rubric for repo/doc/vision yields evidences merged from all three (reducer `operator.ior`).
 
 ## Deliverables
 
