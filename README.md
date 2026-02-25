@@ -2,6 +2,19 @@
 
 Automaton Auditor — Digital Courtroom agent graph. Parallel detective nodes (RepoInvestigator, DocAnalyst, VisionInspector) fan-in to EvidenceAggregator; conditional edges handle proceed/skip. Judicial layer (Judges, Chief Justice) is planned; attachment point documented in `src/graph.py`.
 
+## Interim submission checklist
+
+| Deliverable | Description |
+|-------------|-------------|
+| `src/state.py` | Pydantic/TypedDict state definitions (`Evidence`, `JudicialOpinion`, `AgentState`) with reducers `operator.add`, `operator.ior` |
+| `src/tools/repo_tools.py` | Sandboxed git clone (tempfile), git log extraction, AST-based graph structure analysis |
+| `src/tools/doc_tools.py` | PDF ingestion and chunked querying (RAG-lite approach) |
+| `src/nodes/detectives.py` | RepoInvestigator and DocAnalyst (and VisionInspector) as LangGraph nodes outputting structured `Evidence` |
+| `src/graph.py` | StateGraph: detectives in parallel (fan-out) → EvidenceAggregator (fan-in). Judges not required yet. |
+| `pyproject.toml` | Locked dependencies via uv (`uv.lock` in repo) |
+| `.env.example` | Required API keys and env vars (no secrets committed) |
+| `README.md` | Setup, install dependencies, run detective graph against a target repo URL (below) |
+
 ## Requirements
 
 - **Python**: 3.10+ (see `pyproject.toml` requires-python)
