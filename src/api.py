@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from src.graph import build_detective_graph
+from src.parallelism_checks import run_parallelism_checks
 from src.state import Evidence
 
 app = FastAPI(title="Automaton Auditor API", version="0.1.0")
@@ -25,6 +26,17 @@ class RunRequest(BaseModel):
 
 class RunResponse(BaseModel):
     evidences: dict[str, list[dict]]
+
+
+class ParallelismTestResult(BaseModel):
+    name: str
+    passed: bool
+    message: str
+
+
+class ParallelismTestsResponse(BaseModel):
+    results: list[ParallelismTestResult]
+    all_passed: bool
 
 
 def serialize_evidences(evidences: dict[str, list[Evidence]]) -> dict[str, list[dict]]:
@@ -49,3 +61,10 @@ def run_audit(req: RunRequest) -> RunResponse:
     })
     evidences = state.get("evidences") or {}
     return RunResponse(evidences=serialize_evidences(evidences))
+
+
+@app.get("/api/parallelism-tests", response_model=ParallelismTestsResponse)
+def parallelism_tests() -> ParallelismTestsResponse:
+    results = run_parallelism_checks()
+    out = [ParallelismTestResult(name=r["name"], passed=r["passed"], message=r["message"]) for r in results]
+    return ParallelismTestsResponse(results=out, all_passed=all(r.passed for r in out))

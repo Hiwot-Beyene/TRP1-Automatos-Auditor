@@ -71,9 +71,4 @@ uv sync   # installs pytest via dev-dependencies
 uv run pytest tests/ -v
 ```
 
-See `specs/002-phase1-production-env/docs-testing.md` for the full TDD guide.
 
-## Deliverables
-
-- **Interim report**: `reports/interim_report.pdf` (placeholder for interim submission).
-- Final report and audit outputs will be written under `reports/` and `audit/` in later phases.
