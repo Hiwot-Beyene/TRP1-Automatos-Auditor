@@ -146,3 +146,32 @@ def search_theoretical_depth(chunks: list[dict[str, Any]]) -> dict[str, Any]:
         "term_count": len(set(t for m in matches for t in m.get("matched_terms", []))),
         "in_detailed_explanation": len(sentences_with_terms) > 0 and any(len(s) > 80 for s in sentences_with_terms),
     }
+
+
+def extract_images_from_pdf(pdf_path: str) -> list[dict[str, Any]]:
+    """Extract images from PDF. Returns list of {page: int, data: bytes, name: str}. Empty if none or on error."""
+    path = Path(pdf_path)
+    if not path.exists() or not path.is_file():
+        return []
+    result: list[dict[str, Any]] = []
+    try:
+        reader = PdfReader(str(path))
+        for i, page in enumerate(reader.pages):
+            images = getattr(page, "images", None)
+            if images is None:
+                continue
+            items = list(images.values()) if isinstance(images, dict) else list(images) if hasattr(images, "__iter__") else []
+            for j, img in enumerate(items):
+                try:
+                    data = getattr(img, "get_data", lambda: None)()
+                    if data is None and hasattr(img, "get_object"):
+                        obj = img.get_object()
+                        if hasattr(obj, "get_data"):
+                            data = obj.get_data()
+                    if data:
+                        result.append({"page": i + 1, "data": data, "name": f"page{i+1}_img{j}"})
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return result

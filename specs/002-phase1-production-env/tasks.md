@@ -47,10 +47,10 @@
 
 **Purpose**: RepoInvestigator, DocAnalyst, VisionInspector nodes; EvidenceAggregator. Depends on 002, 003, 004.
 
-- [ ] T013 [005] Add RepoInvestigator node in `src/nodes/detectives.py`: read repo_url, rubric_dimensions (filter target_artifact=github_repo); call repo_tools (clone, extract_git_history, analyze_graph_structure); emit Evidence list into state.evidences via reducer.
-- [ ] T014 [005] Add DocAnalyst node in `src/nodes/detectives.py`: read pdf_path, rubric_dimensions (target_artifact=pdf_report); call doc_tools (ingest_pdf, query, cross_reference); emit Evidence into state.evidences.
-- [ ] T015 [005] Add VisionInspector node in `src/nodes/detectives.py`: read pdf_path, rubric_dimensions (target_artifact=pdf_images); call extract_images_from_pdf (implement in doc_tools or detectives); optional vision model call for swarm_visual; implementation required, execution optional for interim; emit Evidence into state.evidences.
-- [ ] T016 [005] Implement `extract_images_from_pdf(pdf_path)` (in `src/tools/doc_tools.py` or `src/nodes/detectives.py`): return list of image bytes/paths; required for VisionInspector contract.
+- [X] T013 [005] Add RepoInvestigator node in `src/nodes/detectives.py`: read repo_url, rubric_dimensions (filter target_artifact=github_repo); call repo_tools (clone, extract_git_history, analyze_graph_structure); emit Evidence list into state.evidences via reducer.
+- [X] T014 [005] Add DocAnalyst node in `src/nodes/detectives.py`: read pdf_path, rubric_dimensions (target_artifact=pdf_report); call doc_tools (ingest_pdf, query, cross_reference); emit Evidence into state.evidences.
+- [X] T015 [005] Add VisionInspector node in `src/nodes/detectives.py`: read pdf_path, rubric_dimensions (target_artifact=pdf_images); call extract_images_from_pdf (implement in doc_tools or detectives); optional vision model call for swarm_visual; implementation required, execution optional for interim; emit Evidence into state.evidences.
+- [X] T016 [005] Implement `extract_images_from_pdf(pdf_path)` (in `src/tools/doc_tools.py` or `src/nodes/detectives.py`): return list of image bytes/paths; required for VisionInspector contract.
 - [ ] T017 [005] Add EvidenceAggregator in `src/nodes/aggregator.py`: input state.evidences from all detectives; optionally normalize/merge by dimension; write back to state.evidences (reducer.ior); fan-in only, no opinions.
 
 ---
@@ -91,7 +91,7 @@
 - [X] .env.example
 - [ ] src/tools/repo_tools.py (clone, extract_git_history, analyze_graph_structure)
 - [ ] src/tools/doc_tools.py (ingest_pdf, RAG-lite, cross_reference, extract_images_from_pdf)
-- [ ] src/nodes/detectives.py (RepoInvestigator, DocAnalyst, VisionInspector)
+- [X] src/nodes/detectives.py (RepoInvestigator, DocAnalyst, VisionInspector)
 - [ ] src/nodes/aggregator.py (EvidenceAggregator)
 - [ ] src/graph.py (detectives parallel → EvidenceAggregator → END)
 - [ ] README (setup, install, run detective graph vs target repo URL)
