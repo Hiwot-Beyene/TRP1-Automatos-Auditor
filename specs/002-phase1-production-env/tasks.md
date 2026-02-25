@@ -37,8 +37,8 @@
 
 **Purpose**: PDF ingest, RAG-lite, cross-reference. Depends on 002.
 
-- [ ] T010 [004] Implement `ingest_pdf(pdf_path: str)` in `src/tools/doc_tools.py`: parse PDF, chunk text for RAG-lite; return chunked representation (e.g. list of chunks + optional metadata); handle missing/unreadable file.
-- [ ] T011 [004] Implement chunked query / RAG-lite in `src/tools/doc_tools.py`: search chunks for terms (e.g. theoretical_depth keywords); return matching content or Evidence-ready structure.
+- [X] T010 [004] Implement `ingest_pdf(pdf_path: str)` in `src/tools/doc_tools.py`: parse PDF, chunk text for RAG-lite; return chunked representation (e.g. list of chunks + optional metadata); handle missing/unreadable file.
+- [X] T011 [004] Implement chunked query / RAG-lite in `src/tools/doc_tools.py`: search chunks for terms (e.g. theoretical_depth keywords); return matching content or Evidence-ready structure.
 - [ ] T012 [004] Implement cross_reference in `src/tools/doc_tools.py`: take file paths extracted from report and repo evidence; return verified_paths vs hallucinated_paths per contract.
 
 ---
