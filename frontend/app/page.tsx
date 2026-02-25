@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from "react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : "http://127.0.0.1:8000");
 
 type EvidenceItem = {
   goal: string;
@@ -63,14 +65,23 @@ export default function Home() {
   const [parallelDocEvidences, setParallelDocEvidences] = useState<Evidences | null>(null);
 
   useEffect(() => {
+    setRubricError(null);
     fetch(`${API_URL}/api/rubric`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`API ${r.status}`);
+        return r.json();
+      })
       .then((data) => {
         const dims = data.dimensions ?? [];
         setRubricDimensions(Array.isArray(dims) ? dims : []);
-        if (!dims?.length) setRubricError("Rubric not loaded (rubric.json).");
+        if (!dims?.length) setRubricError("Rubric empty (check rubric.json in repo root).");
+        else setRubricError(null);
       })
-      .catch(() => setRubricError("Failed to load rubric from API."));
+      .catch(() => {
+        setRubricError(
+          `Cannot reach API at ${API_URL}. Start backend: uv run uvicorn src.api:app --port 8000`
+        );
+      });
   }, []);
 
   const runRepoAudit = async () => {

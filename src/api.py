@@ -14,8 +14,8 @@ from src.state import Evidence
 app = FastAPI(title="Automaton Auditor API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -23,12 +23,22 @@ app.add_middleware(
 RUBRIC_PATH = Path(__file__).resolve().parent.parent / "rubric.json"
 
 
+def _find_rubric_path() -> Path:
+    if RUBRIC_PATH.is_file():
+        return RUBRIC_PATH
+    cwd_path = Path.cwd() / "rubric.json"
+    if cwd_path.is_file():
+        return cwd_path
+    return RUBRIC_PATH
+
+
 def load_rubric_dimensions():
     """Load dimensions from rubric.json (documentation-defined constitution)."""
-    if not RUBRIC_PATH.is_file():
+    path = _find_rubric_path()
+    if not path.is_file():
         return []
     try:
-        data = json.loads(RUBRIC_PATH.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
         return data.get("dimensions", [])
     except (json.JSONDecodeError, OSError):
         return []
@@ -65,10 +75,11 @@ def serialize_evidences(evidences: dict[str, list[Evidence]]) -> dict[str, list[
 @app.get("/api/rubric")
 def get_rubric():
     """Return the machine-readable rubric from rubric.json (dimensions + synthesis_rules)."""
-    if not RUBRIC_PATH.is_file():
+    path = _find_rubric_path()
+    if not path.is_file():
         return {"dimensions": [], "synthesis_rules": {}}
     try:
-        return json.loads(RUBRIC_PATH.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return {"dimensions": [], "synthesis_rules": {}}
 
