@@ -18,8 +18,8 @@
 - [X] T002 [002] Add AgentState TypedDict in `src/state.py` with reducers: evidences `Annotated[Dict[str, List[Evidence]], operator.ior]`, opinions `Annotated[List[JudicialOpinion], operator.add]`; repo_url, pdf_path, rubric_dimensions, final_report.
 - [X] T003 [002] Add `pyproject.toml` with Python 3.10+, LangGraph, LangChain, Pydantic; configure uv and generate lockfile.
 - [X] T004 [002] Add `.env.example` documenting LANGCHAIN_TRACING_V2, LANGCHAIN_API_KEY (and any other API keys for PDF/vision); no secrets in repo.
-- [ ] T005 [002] Add README.md: project description, setup (uv sync, cp .env.example .env), install, how to run detective graph vs target repo URL, reference to reports/interim_report.pdf.
-- [ ] T006 [002] Create `reports/` directory and add placeholder or generated `reports/interim_report.pdf` for interim deliverable.
+- [X] T005 [002] Add README.md: project description, setup (uv sync, cp .env.example .env), install, how to run detective graph vs target repo URL, reference to reports/interim_report.pdf.
+- [X] T006 [002] Create `reports/` directory and add placeholder or generated `reports/interim_report.pdf` for interim deliverable.
 
 ---
 
@@ -51,7 +51,7 @@
 - [X] T014 [005] Add DocAnalyst node in `src/nodes/detectives.py`: read pdf_path, rubric_dimensions (target_artifact=pdf_report); call doc_tools (ingest_pdf, query, cross_reference); emit Evidence into state.evidences.
 - [X] T015 [005] Add VisionInspector node in `src/nodes/detectives.py`: read pdf_path, rubric_dimensions (target_artifact=pdf_images); call extract_images_from_pdf (implement in doc_tools or detectives); optional vision model call for swarm_visual; implementation required, execution optional for interim; emit Evidence into state.evidences.
 - [X] T016 [005] Implement `extract_images_from_pdf(pdf_path)` (in `src/tools/doc_tools.py` or `src/nodes/detectives.py`): return list of image bytes/paths; required for VisionInspector contract.
-- [ ] T017 [005] Add EvidenceAggregator in `src/nodes/aggregator.py`: input state.evidences from all detectives; optionally normalize/merge by dimension; write back to state.evidences (reducer.ior); fan-in only, no opinions.
+- [X] T017 [005] Add EvidenceAggregator in `src/nodes/aggregator.py`: input state.evidences from all detectives; optionally normalize/merge by dimension; write back to state.evidences (reducer.ior); fan-in only, no opinions.
 
 ---
 
@@ -59,7 +59,7 @@
 
 **Purpose**: StateGraph with detectives in parallel and EvidenceAggregator; no Judges or Chief Justice. Depends on 002, 005 (003/004 via 005).
 
-- [ ] T018 [007] Wire graph in `src/graph.py`: build StateGraph with nodes RepoInvestigator, DocAnalyst, VisionInspector, EvidenceAggregator; START → all three detectives (parallel), all detectives → EvidenceAggregator → END; use LangGraph semantics so EvidenceAggregator runs after all detectives complete.
+- [X] T018 [007] Wire graph in `src/graph.py`: build StateGraph with nodes RepoInvestigator, DocAnalyst, VisionInspector, EvidenceAggregator; START → all three detectives (parallel), all detectives → EvidenceAggregator → END; use LangGraph semantics so EvidenceAggregator runs after all detectives complete.
 - [ ] T019 [007] Add graph entrypoint: invoke with repo_url, pdf_path, rubric_dimensions (load rubric.json if present or pass minimal dimensions); return state with populated evidences.
 - [ ] T020 [007] Ensure rubric.json exists and is loadable (minimal 10-dimension structure with id, name, target_artifact, forensic_instruction) for detective dispatch; optional stub acceptable for interim if 006 not merged.
 
@@ -92,7 +92,7 @@
 - [ ] src/tools/repo_tools.py (clone, extract_git_history, analyze_graph_structure)
 - [ ] src/tools/doc_tools.py (ingest_pdf, RAG-lite, cross_reference, extract_images_from_pdf)
 - [X] src/nodes/detectives.py (RepoInvestigator, DocAnalyst, VisionInspector)
-- [ ] src/nodes/aggregator.py (EvidenceAggregator)
-- [ ] src/graph.py (detectives parallel → EvidenceAggregator → END)
-- [ ] README (setup, install, run detective graph vs target repo URL)
-- [ ] reports/interim_report.pdf
+- [X] src/nodes/aggregator.py (EvidenceAggregator)
+- [X] src/graph.py (detectives parallel → EvidenceAggregator → END)
+- [X] README (setup, install, run detective graph vs target repo URL)
+- [X] reports/interim_report.pdf
