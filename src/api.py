@@ -1,0 +1,51 @@
+"""FastAPI backend: POST /api/run to invoke detective graph. Rubric and repo/pdf from request body."""
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+
+from src.graph import build_detective_graph
+from src.state import Evidence
+
+app = FastAPI(title="Automaton Auditor API", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class RunRequest(BaseModel):
+    repo_url: str = ""
+    pdf_path: str = ""
+    rubric_dimensions: list[dict] = Field(..., min_length=1)
+
+
+class RunResponse(BaseModel):
+    evidences: dict[str, list[dict]]
+
+
+def serialize_evidences(evidences: dict[str, list[Evidence]]) -> dict[str, list[dict]]:
+    out: dict[str, list[dict]] = {}
+    for dim_id, evs in evidences.items():
+        out[dim_id] = [e.model_dump() if isinstance(e, Evidence) else e for e in evs]
+    return out
+
+
+@app.post("/api/run", response_model=RunResponse)
+def run_audit(req: RunRequest) -> RunResponse:
+    if not req.repo_url.strip() and not req.pdf_path.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Provide at least one of repo_url or pdf_path",
+        )
+    graph = build_detective_graph()
+    state = graph.invoke({
+        "repo_url": req.repo_url.strip(),
+        "pdf_path": req.pdf_path.strip(),
+        "rubric_dimensions": req.rubric_dimensions,
+    })
+    evidences = state.get("evidences") or {}
+    return RunResponse(evidences=serialize_evidences(evidences))
