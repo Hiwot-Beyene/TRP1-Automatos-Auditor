@@ -2,6 +2,21 @@
 
 Automaton Auditor — Digital Courtroom agent graph. Parallel detective nodes (RepoInvestigator, DocAnalyst, VisionInspector) fan-in to EvidenceAggregator; conditional edges handle proceed/skip. Judicial layer (Judges, Chief Justice) is planned; attachment point documented in `src/graph.py`.
 
+## Supported Python and lock file
+
+- **Python:** 3.10, 3.11, 3.12 (see `requires-python` in `pyproject.toml`). Use one of these for compatibility.
+- **Lock file:** `uv.lock` is committed. Run `uv sync` for reproducible installs; after dependency changes run `uv lock` and commit the updated `uv.lock`.
+
+## Scripts and optional tooling
+
+| Tool / script | Purpose |
+|---------------|---------|
+| **uv** | Package manager and runner: `uv sync`, `uv run pytest`, `uv run python scripts/run_audit.py ...`. Required. |
+| **scripts/run_audit.py** | CLI to run the detective graph against a repo URL (and optional PDF). No API/frontend needed. |
+| **Frontend (Next.js)** | Optional: run API then `cd frontend && npm run dev` for the Web UI. |
+| **pytest** | `uv run pytest tests/ -v` for unit, contract, and integration tests. |
+| **Makefile** | None; use `uv` and the scripts above for common tasks. |
+
 ## Interim submission checklist
 
 | Deliverable | Description |
@@ -17,7 +32,7 @@ Automaton Auditor — Digital Courtroom agent graph. Parallel detective nodes (R
 
 ## Requirements
 
-- **Python**: 3.10+ (see `pyproject.toml` requires-python)
+- **Python**: 3.10+ (see `pyproject.toml` requires-python; 3.10, 3.11, 3.12 recommended)
 - **Package manager**: [uv](https://docs.astral.sh/uv/)
 
 ## Setup
@@ -29,7 +44,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Clone and enter repo
 cd TRP1-Automatos-Auditor
 
-# Install dependencies (creates/updates uv.lock)
+# Install dependencies (uses committed uv.lock for reproducible install)
 uv sync
 
 # Copy env template and set API keys (optional; for LangSmith and PDF/vision)
@@ -37,7 +52,7 @@ cp .env.example .env
 # Edit .env: set LANGCHAIN_API_KEY for tracing; add OPENAI/ANTHROPIC/GOOGLE keys if using PDF/vision.
 ```
 
-Commit `uv.lock` so dependencies are reproducible.
+Keep `uv.lock` committed; after adding or upgrading dependencies, run `uv lock` and commit the updated `uv.lock`.
 
 ## Run the detective graph against a target repo
 
