@@ -14,7 +14,7 @@ from src.graph import build_detective_graph
 
 
 def _get_graph_structure(compiled):
-    """Return graph structure from LangGraph compiled graph (get_graph() -> DiGraph)."""
+    """Return graph structure from LangGraph compiled graph. LangGraph returns Graph(nodes=dict, edges=list)."""
     get_graph = getattr(compiled, "get_graph", None)
     if get_graph is None:
         pytest.skip("Compiled graph does not expose get_graph()")
@@ -24,19 +24,34 @@ def _get_graph_structure(compiled):
     return G
 
 
+def _node_ids(G):
+    """Node names: G.nodes is a dict in LangGraph."""
+    nodes = getattr(G, "nodes", None)
+    if nodes is None:
+        return set()
+    return set(nodes.keys()) if isinstance(nodes, dict) else set(nodes())
+
+
+def _edges_list(G):
+    """List of (source, target). LangGraph uses G.edges (list of Edge with .source, .target)."""
+    edges = getattr(G, "edges", None)
+    if edges is None:
+        return []
+    if callable(edges):
+        edges = edges()
+    return [(e.source, e.target) if hasattr(e, "source") else (e[0], e[1]) for e in edges]
+
+
 def _start_node(G):
-    """LangGraph may use __start__ or start."""
-    nodes = list(G.nodes())
     for name in ("__start__", "start"):
-        if name in nodes:
+        if name in _node_ids(G):
             return name
     pytest.skip("Could not find start node in graph")
 
 
 def _end_node(G):
-    nodes = list(G.nodes())
     for name in ("__end__", "end"):
-        if name in nodes:
+        if name in _node_ids(G):
             return name
     pytest.skip("Could not find end node in graph")
 
@@ -45,7 +60,7 @@ def test_graph_has_four_detective_nodes():
     """Graph must define repo_investigator, doc_analyst, vision_inspector, evidence_aggregator."""
     compiled = build_detective_graph()
     G = _get_graph_structure(compiled)
-    nodes = set(G.nodes())
+    nodes = _node_ids(G)
     expected = {"repo_investigator", "doc_analyst", "vision_inspector", "evidence_aggregator"}
     assert expected.issubset(nodes), f"Expected nodes {expected}, got {nodes}"
 
@@ -55,9 +70,8 @@ def test_parallelism_fan_out_from_start():
     compiled = build_detective_graph()
     G = _get_graph_structure(compiled)
     start = _start_node(G)
-    successors = set(G.successors(start)) if hasattr(G, "successors") else set()
-    if not successors and hasattr(G, "edges"):
-        successors = {e[1] for e in G.edges() if e[0] == start}
+    edge_list = _edges_list(G)
+    successors = {t for s, t in edge_list if s == start}
     detectives = {"repo_investigator", "doc_analyst", "vision_inspector"}
     assert detectives.issubset(successors), f"START should fan-out to {detectives}, got {successors}"
 
@@ -66,10 +80,8 @@ def test_fan_in_to_evidence_aggregator():
     """All three detectives must have an edge to evidence_aggregator (fan-in)."""
     compiled = build_detective_graph()
     G = _get_graph_structure(compiled)
-    if hasattr(G, "predecessors"):
-        preds = set(G.predecessors("evidence_aggregator"))
-    else:
-        preds = {e[0] for e in G.edges() if e[1] == "evidence_aggregator"}
+    edge_list = _edges_list(G)
+    preds = {s for s, t in edge_list if t == "evidence_aggregator"}
     detectives = {"repo_investigator", "doc_analyst", "vision_inspector"}
     assert detectives.issubset(preds), f"evidence_aggregator should have incoming edges from {detectives}, got {preds}"
 
@@ -79,10 +91,8 @@ def test_evidence_aggregator_has_edge_to_end():
     compiled = build_detective_graph()
     G = _get_graph_structure(compiled)
     end = _end_node(G)
-    if hasattr(G, "successors"):
-        succ = set(G.successors("evidence_aggregator"))
-    else:
-        succ = {e[1] for e in G.edges() if e[0] == "evidence_aggregator"}
+    edge_list = _edges_list(G)
+    succ = {t for s, t in edge_list if s == "evidence_aggregator"}
     assert succ == {end}, f"evidence_aggregator should point to END ({end}), got {succ}"
 
 
