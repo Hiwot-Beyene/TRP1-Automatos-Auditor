@@ -22,58 +22,9 @@ cp .env.example .env
 # Edit .env: set LANGCHAIN_API_KEY for tracing; add OPENAI/ANTHROPIC/GOOGLE keys if using PDF/vision.
 ```
 
-## Run the detective graph
+## Run the project (Web UI)
 
-**Interactive run (prompts for Repo URL and doc URL):**
-
-```bash
-uv run python -m src
-```
-
-You will be asked:
-- **Enter Repo URL:** e.g. `https://github.com/owner/target-repo`
-- **Enter doc URL:** path or URL to the PDF report (or leave blank to skip)
-
-The graph then runs and prints a summary of evidences by dimension.
-
----
-
-**Programmatic run:** invoke the graph with a target repo URL (and optionally a PDF report path and rubric dimensions). State is returned with aggregated `evidences`.
-
-```bash
-uv run python -c "
-from src.graph import build_detective_graph
-
-graph = build_detective_graph()
-state = graph.invoke({
-    \"repo_url\": \"https://github.com/owner/target-repo\",
-    \"pdf_path\": \"/path/to/report.pdf\",   # or \"\" to skip PDF
-    \"rubric_dimensions\": [                  # or load from rubric.json
-        {\"id\": \"git_forensic_analysis\", \"name\": \"Git history\", \"target_artifact\": \"github_repo\"},
-        {\"id\": \"graph_orchestration\", \"name\": \"Graph\", \"target_artifact\": \"github_repo\"},
-    ],
-})
-print(\"Evidences:\", list(state.get(\"evidences\", {}).keys()))
-"
-```
-
-Or from your own script:
-
-```python
-from src.graph import build_detective_graph
-
-graph = build_detective_graph()
-state = graph.invoke({
-    "repo_url": "https://github.com/owner/target-repo",
-    "pdf_path": "",
-    "rubric_dimensions": [...],
-})
-# state["evidences"] — aggregated by dimension after all detectives + EvidenceAggregator
-```
-
-## Web UI
-
-A Next.js frontend (Tailwind) lets you run audits by **Repo URL** or **Doc URL** and supply the rubric as JSON in the UI.
+Run audits and parallelism tests from the **Web UI**.
 
 1. **Start the API** (from repo root):
 
@@ -87,20 +38,23 @@ uv run uvicorn src.api:app --reload --port 8000
 cd frontend && npm install && npm run dev
 ```
 
-3. Open **http://localhost:3000**. Choose **Repo URL** or **Doc URL**, enter the URL, paste or edit the rubric JSON (or use "Load default"), then click **Run audit**. Results appear as evidence by dimension.
+3. Open **http://localhost:3000**. The UI has **3 tabs** (per TRP1 Challenge: each audit type can use its own rubric):
+
+   - **Repository** — Repository URL + rubric (JSON). Run repo audit (RepoInvestigator). Result shown in the same tab.
+   - **Document** — Document/PDF URL + rubric (JSON). Run document audit (DocAnalyst, VisionInspector). Result shown in the same tab.
+   - **Parallelism** — Two blocks side by side: [Repo URL + rubric] and [Document URL + rubric]. One **Run repo + document together** sends both URLs and merges both rubrics in a single graph run (parallel detectives). Results are shown **for each**: repo result (evidences for `github_repo` dimensions) and document result (evidences for `pdf_report` / `pdf_images` dimensions).
 
 Optional: in `frontend/.env.local` set `NEXT_PUBLIC_API_URL=http://localhost:8000` if the API runs on a different host/port.
 
+**Programmatic use** (optional): `from src.graph import build_detective_graph` then `graph.invoke({...})` with `repo_url`, `pdf_path`, `rubric_dimensions`. State is returned with aggregated `evidences`.
+
 ## Parallelism tests (TRP1 Challenge)
 
-Contract tests verify detective graph fan-out/fan-in and evidence merge per the challenge doc:
+Contract tests for graph structure (fan-out, fan-in, evidence merge) can be run via pytest:
 
 ```bash
-uv sync
 uv run pytest tests/contract/test_detective_graph_parallelism.py -v
 ```
-
-Tests assert: START fans out to all three detectives; all three feed into EvidenceAggregator; EvidenceAggregator → END; and invoking with rubric for repo/doc/vision yields evidences merged from all three (reducer `operator.ior`).
 
 ## Deliverables
 
