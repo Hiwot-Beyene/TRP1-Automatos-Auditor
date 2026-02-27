@@ -178,6 +178,11 @@ def ChiefJusticeNode(state: dict[str, Any]) -> dict[str, Any]:
     )
 
     md = _report_to_markdown(report)
+    out_dir = state.get("audit_output_dir")
+    if out_dir:
+        out_path = Path(out_dir) / "audit_report.md"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(md, encoding="utf-8")
     out_path = Path.cwd() / "reports" / "audit_report.md"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(md, encoding="utf-8")
