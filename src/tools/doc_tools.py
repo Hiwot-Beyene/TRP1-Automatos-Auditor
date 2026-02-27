@@ -1,5 +1,6 @@
 """PDF ingestion and RAG-lite query for DocAnalyst."""
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -140,12 +141,26 @@ def search_theoretical_depth(chunks: list[dict[str, Any]]) -> dict[str, Any]:
             sentence = text[begin:end].strip()
             if sentence and sentence not in sentences_with_terms:
                 sentences_with_terms.append(sentence)
-    return {
+    result: dict[str, Any] = {
         "matched_chunks": matches,
         "sentences_with_terms": sentences_with_terms,
         "term_count": len(set(t for m in matches for t in m.get("matched_terms", []))),
         "in_detailed_explanation": len(sentences_with_terms) > 0 and any(len(s) > 80 for s in sentences_with_terms),
     }
+    if os.environ.get("GOOGLE_API_KEY"):
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash")
+            context = "\n\n".join(c.get("text", "")[:500] for c in chunks[:10])
+            prompt = f"""Given this PDF excerpt, assess theoretical depth (e.g. use of Fan-In/Fan-Out, State Synchronization, Metacognition). Reply in 1-2 sentences. Excerpt:\n\n{context}"""
+            response = llm.invoke(prompt)
+            if hasattr(response, "content") and response.content:
+                result["llm_rationale"] = response.content.strip()
+        except Exception:
+            result["llm_rationale"] = None
+    else:
+        result["llm_rationale"] = None
+    return result
 
 
 def extract_images_from_pdf(pdf_path: str) -> list[dict[str, Any]]:
