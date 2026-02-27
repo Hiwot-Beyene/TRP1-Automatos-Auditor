@@ -95,7 +95,39 @@ cd frontend && npm install && npm run dev
    - **Document** — Document/PDF path or URL. Run document audit (DocAnalyst, VisionInspector).
    - **Parallelism** — Repo URL + Document URL. One run executes both in parallel and shows merged evidences.
 
+   After any run, the **Final report** section appears below with overall score (X/5), executive summary, per-criterion scores and judge opinions, and remediation plan.
+
 Optional: in `frontend/.env.local` set `NEXT_PUBLIC_API_URL=http://localhost:8000` if the API runs on a different host/port.
+
+### Step-by-step: Run backend + frontend for testing
+
+1. **Terminal 1 — Backend**
+   ```bash
+   cd TRP1-Automatos-Auditor
+   uv sync
+   cp .env.example .env   # then set GROQ_API_KEY, GOOGLE_API_KEY (optional but needed for full judges/doc/vision)
+   uv run uvicorn src.api:app --reload --port 8000
+   ```
+   Wait until you see `Uvicorn running on http://127.0.0.1:8000`.
+
+2. **Terminal 2 — Frontend**
+   ```bash
+   cd TRP1-Automatos-Auditor/frontend
+   npm install
+   npm run dev
+   ```
+   Wait until you see `Ready on http://localhost:3000` (or the port shown).
+
+3. **Browser**
+   - Open **http://localhost:3000**.
+   - If the rubric loads, the header will not show an error. If you see "Cannot reach API…", ensure the backend is running on port 8000.
+
+4. **Run an audit**
+   - **Repository tab:** Enter a repo URL (e.g. `https://github.com/owner/repo`), click **Run repo audit**. Wait for the run to finish. Check **Result** for evidences and **Final report** for overall score and criteria.
+   - **Document tab:** Enter a PDF path or URL, click **Run document audit**. Check Result and Final report.
+   - **Parallelism tab:** Enter both repo URL and document URL, click **Run repo + document together**. Check both evidence panels and the Final report below.
+
+5. **Optional:** Set `NEXT_PUBLIC_API_URL=http://localhost:8000` in `frontend/.env.local` if the frontend runs on another host (e.g. in Docker) so it can reach the API.
 
 **Programmatic use**: `from src.graph import build_detective_graph` then `graph.invoke({"repo_url": "...", "pdf_path": "...", "rubric_dimensions": [...]})`. State is returned with aggregated `evidences`. Load `rubric_dimensions` from `rubric.json` (see `src/api.py` `load_rubric_dimensions()`).
 

@@ -18,6 +18,23 @@ type Evidences = Record<string, EvidenceItem[]>;
 
 type RubricDim = { id?: string; name?: string; target_artifact?: string };
 
+type JudgeOpinion = { judge: string; criterion_id: string; score: number; argument: string; cited_evidence?: string[] };
+type CriterionResult = {
+  dimension_id: string;
+  dimension_name: string;
+  final_score: number;
+  judge_opinions?: JudgeOpinion[];
+  dissent_summary?: string | null;
+  remediation?: string;
+};
+type FinalReport = {
+  repo_url?: string;
+  executive_summary?: string;
+  overall_score?: number;
+  criteria?: CriterionResult[];
+  remediation_plan?: string;
+};
+
 function splitEvidencesByArtifact(
   evidences: Evidences,
   rubric: RubricDim[]
@@ -64,6 +81,8 @@ export default function Home() {
   const [parallelRepoEvidences, setParallelRepoEvidences] = useState<Evidences | null>(null);
   const [parallelDocEvidences, setParallelDocEvidences] = useState<Evidences | null>(null);
 
+  const [lastFinalReport, setLastFinalReport] = useState<FinalReport | null>(null);
+
   useEffect(() => {
     setRubricError(null);
     fetch(`${API_URL}/api/rubric`)
@@ -106,6 +125,7 @@ export default function Home() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || res.statusText || "Request failed");
       setRepoEvidences(data.evidences ?? {});
+      setLastFinalReport(data.final_report ?? null);
     } catch (e) {
       setRepoError(e instanceof Error ? e.message : "Request failed");
     } finally {
@@ -135,6 +155,7 @@ export default function Home() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || res.statusText || "Request failed");
       setDocEvidences(data.evidences ?? {});
+      setLastFinalReport(data.final_report ?? null);
     } catch (e) {
       setDocError(e instanceof Error ? e.message : "Request failed");
     } finally {
@@ -169,6 +190,7 @@ export default function Home() {
       const { repo: repoEv, report: docEv } = splitEvidencesByArtifact(evidences, rubricDimensions);
       setParallelRepoEvidences(repoEv);
       setParallelDocEvidences(docEv);
+      setLastFinalReport(data.final_report ?? null);
     } catch (e) {
       setParallelError(e instanceof Error ? e.message : "Request failed");
     } finally {
@@ -197,6 +219,53 @@ export default function Home() {
             </ul>
           </div>
         ))}
+      </div>
+    );
+  }
+
+  function ReportBlock({ report }: { report: FinalReport }) {
+    const score = report.overall_score ?? 0;
+    const criteria = report.criteria ?? [];
+    return (
+      <div className="mt-6 rounded-xl border border-amber-500/30 bg-slate-900/50 p-6">
+        <h3 className="mb-3 text-lg font-medium text-amber-200">Final report</h3>
+        <div className="mb-4 flex items-baseline gap-2">
+          <span className="text-3xl font-light text-white">{score.toFixed(1)}</span>
+          <span className="text-slate-400">/ 5</span>
+        </div>
+        {report.executive_summary && (
+          <p className="mb-4 text-sm text-slate-300">{report.executive_summary}</p>
+        )}
+        <h4 className="mb-2 text-sm font-medium text-slate-400">Criteria</h4>
+        <ul className="space-y-3">
+          {criteria.map((c) => (
+            <li key={c.dimension_id} className="rounded-lg border border-slate-700/40 bg-slate-800/40 p-3">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="font-medium text-slate-200">{c.dimension_name}</span>
+                <span className="text-amber-200">{c.final_score}/5</span>
+              </div>
+              {c.dissent_summary && (
+                <p className="mb-2 text-xs text-amber-200/80">{c.dissent_summary}</p>
+              )}
+              {c.judge_opinions?.length ? (
+                <ul className="space-y-1 text-xs text-slate-400">
+                  {c.judge_opinions.map((op, i) => (
+                    <li key={i}>
+                      <span className="text-slate-500">{op.judge}:</span> {op.score} — {(op.argument || "").slice(0, 120)}
+                      {(op.argument?.length ?? 0) > 120 ? "…" : ""}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ul>
+        {report.remediation_plan && (
+          <>
+            <h4 className="mb-2 mt-4 text-sm font-medium text-slate-400">Remediation</h4>
+            <p className="text-sm text-slate-400">{report.remediation_plan}</p>
+          </>
+        )}
       </div>
     );
   }
@@ -344,6 +413,12 @@ export default function Home() {
             >
               {parallelLoading ? "Running…" : "Run repo + document together"}
             </button>
+          </section>
+        )}
+
+        {lastFinalReport && (
+          <section className="mt-8 rounded-2xl border border-slate-700/50 bg-slate-800/30 p-8 shadow-xl backdrop-blur">
+            <ReportBlock report={lastFinalReport} />
           </section>
         )}
       </div>
