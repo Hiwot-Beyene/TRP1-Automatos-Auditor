@@ -14,7 +14,7 @@ Automaton Auditor — Digital Courtroom agent graph. Detectives (RepoInvestigato
 | Tool / script | Purpose |
 |---------------|---------|
 | **uv** | Package manager and runner: `uv sync`, `uv run pytest`, `uv run python scripts/run_audit.py ...`. Required. |
-| **scripts/run_audit.py** | CLI: full audit (detectives → judges → Chief Justice); writes Markdown to `reports/` and `audit/report_onself_generated/` or `audit/report_onpeer_generated/` by `--mode`. |
+| **scripts/run_audit.py** | CLI: full audit (detectives → judges → Chief Justice); writes Markdown to `audit/` and, by `--mode`, to `audit/report_onself_generated/` or `audit/report_onpeer_generated/`. |
 | **Frontend (Next.js)** | Optional: run API then `cd frontend && npm run dev` for the Web UI. |
 | **pytest** | `uv run pytest tests/ -v` for unit, contract, and integration tests. |
 | **Makefile** | None; use `uv` and the scripts above for common tasks. |
@@ -66,7 +66,7 @@ Keep `uv.lock` committed; after adding or upgrading dependencies, run `uv lock` 
 # Repo only
 uv run python scripts/run_audit.py https://github.com/owner/repo
 
-# Repo + PDF report path (writes to reports/audit_report.md and audit/report_onself_generated/ or audit/report_onpeer_generated/)
+# Repo + PDF report path (writes to audit/audit_report.md and, with script, to audit/report_onself_generated/ or audit/report_onpeer_generated/)
 uv run python scripts/run_audit.py https://github.com/owner/repo /path/to/report.pdf
 
 # Peer audit mode (report written to audit/report_onpeer_generated/)

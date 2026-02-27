@@ -56,6 +56,8 @@ class RunRequest(BaseModel):
 
 class RunResponse(BaseModel):
     evidences: dict[str, list[dict]]
+    final_report: dict | None = None
+    overall_score: float | None = None
 
 
 class ParallelismTestResult(BaseModel):
