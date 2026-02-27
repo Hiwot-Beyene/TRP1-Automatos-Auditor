@@ -4,6 +4,9 @@ from typing import Any
 
 from src.state import Evidence
 from src.tools.doc_tools import extract_file_paths_from_text, ingest_pdf
+
+
+def ReportAccuracyNode(state: dict[str, Any]) -> dict[str, Any]:
     """Cross-reference file paths mentioned in PDF with repo evidence. Requires aggregated evidences and pdf_path."""
     pdf_path = state.get("pdf_path") or ""
     evidences = state.get("evidences") or {}
@@ -14,7 +17,7 @@ from src.tools.doc_tools import extract_file_paths_from_text, ingest_pdf
 
     repo_content_parts: list[str] = []
     for dim_id, elist in evidences.items():
-        if dim_id in ("theoretical_depth", "report_accuracy", "swarm_visual"):
+        if dim_id == "report_accuracy":
             continue
         for e in elist or []:
             if isinstance(e, Evidence):

@@ -64,21 +64,24 @@ def RepoInvestigatorNode(state: dict[str, Any]) -> dict[str, Any]:
                         llm_rationale = resp.content.strip()
                 except Exception:
                     pass
+            content = f"commits={len(history)}; has_state_graph={graph_info.get('has_state_graph')}; nodes={graph_info.get('nodes', [])}; edges={graph_info.get('edges', [])}"
+            base_rationale = "git log and AST analysis"
+            if history:
+                content += f"; messages_sample={[h.get('message','')[:40] for h in history[:5]]}"
+            rationale = base_rationale + (f"; {llm_rationale}" if llm_rationale else "")
             for d in dimensions:
                 dim_id = d.get("id", "unknown")
-                base_rationale: str
-                if dim_id == "git_forensic_analysis":
-                    content = f"{len(history)} commits" + (f"; messages: {[h.get('message','')[:40] for h in history[:5]]}" if history else "")
-                    base_rationale = "git log extracted"
-                    evidences[dim_id] = [_evidence(dim_id, len(history) > 0, content, repo_url, base_rationale + (f"; {llm_rationale}" if llm_rationale else ""), 0.9 if len(history) > 3 else 0.5)]
-                elif dim_id == "graph_orchestration":
-                    content = f"has_state_graph={graph_info.get('has_state_graph')}; nodes={graph_info.get('nodes', [])}; edges={graph_info.get('edges', [])}"
-                    base_rationale = "AST analysis"
-                    evidences[dim_id] = [_evidence(dim_id, graph_info.get("has_state_graph", False), content, path, base_rationale + (f"; {llm_rationale}" if llm_rationale else ""), 0.8 if graph_info.get("has_state_graph") else 0.3)]
+                forensic = (d.get("forensic_instruction") or "").lower()
+                if "git" in forensic or "commit" in forensic or "history" in forensic:
+                    found = len(history) > 0
+                    conf = 0.9 if len(history) > 3 else 0.5
+                elif "graph" in forensic or "state" in forensic or "node" in forensic or "edge" in forensic:
+                    found = graph_info.get("has_state_graph", False)
+                    conf = 0.8 if found else 0.3
                 else:
-                    content = f"git_history_len={len(history)}; graph={graph_info.get('has_state_graph')}"
-                    base_rationale = "Repo tools run"
-                    evidences[dim_id] = [_evidence(dim_id, True, content, path, base_rationale + (f"; {llm_rationale}" if llm_rationale else ""), 0.7)]
+                    found = True
+                    conf = 0.7
+                evidences[dim_id] = [_evidence(dim_id, found, content, path, rationale, conf)]
     except repo_tools.RepoCloneError as e:
         for d in dimensions:
             dim_id = d.get("id", "unknown")
@@ -103,17 +106,16 @@ def DocAnalystNode(state: dict[str, Any]) -> dict[str, Any]:
     try:
         chunks = ingest_pdf(pdf_path)
         result = search_theoretical_depth(chunks)
+        content = "; ".join(result.get("sentences_with_terms", [])[:5]) or str(result)[:500]
+        in_detail = result.get("in_detailed_explanation", False)
+        rationale = result.get("llm_rationale") or f"in_detailed_explanation={in_detail}"
+        if rationale and len(rationale) > 400:
+            rationale = rationale[:400]
+        found = result.get("term_count", 0) > 0
+        conf = 0.8 if in_detail else (0.4 if found else 0.2)
         for d in dimensions:
             dim_id = d.get("id", "unknown")
-            if dim_id == "theoretical_depth":
-                content = "; ".join(result.get("sentences_with_terms", [])[:3]) or "No matching terms"
-                in_detail = result.get("in_detailed_explanation", False)
-                rationale = f"in_detailed_explanation={in_detail}"
-                if result.get("llm_rationale"):
-                    rationale = result["llm_rationale"][:300]
-                evidences[dim_id] = [_evidence(dim_id, result.get("term_count", 0) > 0, content, pdf_path, rationale, 0.8 if in_detail else 0.4)]
-            else:
-                evidences[dim_id] = [_evidence(dim_id, True, str(result)[:500], pdf_path, "PDF ingested and queried", 0.6)]
+            evidences[dim_id] = [_evidence(dim_id, found, content, pdf_path, rationale, conf)]
     except DocIngestError as e:
         for d in dimensions:
             dim_id = d.get("id", "unknown")
