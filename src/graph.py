@@ -19,6 +19,8 @@ from langgraph.graph import END, START, StateGraph
 from src.state import AgentState
 from src.nodes.aggregator import EvidenceAggregatorNode
 from src.nodes.detectives import DocAnalystNode, RepoInvestigatorNode, VisionInspectorNode
+from src.nodes.judges import JudicialPanelNode
+from src.nodes.justice import ChiefJusticeNode
 
 
 def _route_after_aggregator(state: dict) -> str:
@@ -29,12 +31,14 @@ def _route_after_aggregator(state: dict) -> str:
 
 
 def build_detective_graph():
-    """Build compiled graph with parallel detectives and conditional routing after aggregation."""
+    """Build compiled graph: detectives -> aggregator -> conditional(proceed -> judges -> chief_justice | skip -> END)."""
     g = StateGraph(AgentState)
     g.add_node("repo_investigator", RepoInvestigatorNode)
     g.add_node("doc_analyst", DocAnalystNode)
     g.add_node("vision_inspector", VisionInspectorNode)
     g.add_node("evidence_aggregator", EvidenceAggregatorNode)
+    g.add_node("judicial_panel", JudicialPanelNode)
+    g.add_node("chief_justice", ChiefJusticeNode)
 
     g.add_edge(START, "repo_investigator")
     g.add_edge(START, "doc_analyst")
@@ -45,7 +49,9 @@ def build_detective_graph():
     g.add_conditional_edges(
         "evidence_aggregator",
         _route_after_aggregator,
-        {"proceed": END, "skip": END},
+        {"proceed": "judicial_panel", "skip": END},
     )
+    g.add_edge("judicial_panel", "chief_justice")
+    g.add_edge("chief_justice", END)
 
     return g.compile()
