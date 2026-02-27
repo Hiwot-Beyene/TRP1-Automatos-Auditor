@@ -44,8 +44,7 @@ def _sanitize_url(url: str) -> str:
 
 @contextmanager
 def sandboxed_clone(repo_url: str):
-    """Clone repo into a temp directory. Yields path. Raises RepoCloneError on failure.
-    Transient errors (timeout, connection) are retried with backoff; permanent errors (auth, not found) fail immediately."""
+    """Clone repo (main branch) into a temp directory. Yields path. Raises RepoCloneError on failure."""
     url = _sanitize_url(repo_url)
     if not url:
         raise RepoCloneError("Repo URL is empty")
@@ -55,57 +54,57 @@ def sandboxed_clone(repo_url: str):
                 f"Invalid repo URL: not a recognized git URL (e.g. https://github.com/owner/repo)"
             )
     tmp = tempfile.TemporaryDirectory(prefix="auditor_clone_")
-    result = None
     last_error: str | None = None
+    result = None
     try:
         for attempt in range(MAX_CLONE_RETRIES + 1):
-            try:
-                result = subprocess.run(
-                    ["git", "clone", "--depth", "50", url, tmp.name],
-                    capture_output=True,
-                    text=True,
-                    timeout=CLONE_TIMEOUT_SEC,
-                    cwd=None,
-                )
-            except subprocess.TimeoutExpired:
-                last_error = "Clone timed out"
-                if attempt >= MAX_CLONE_RETRIES:
-                    raise RepoCloneError(
-                        f"git clone failed after {MAX_CLONE_RETRIES + 1} attempts: {last_error}"
+            for branch in ("main", "master", None):
+                try:
+                    cmd = ["git", "clone", "--depth", "200", url, tmp.name]
+                    if branch:
+                        cmd.insert(2, "--branch")
+                        cmd.insert(3, branch)
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=CLONE_TIMEOUT_SEC,
+                        cwd=None,
                     )
-                if attempt < MAX_CLONE_RETRIES:
-                    time.sleep(INITIAL_BACKOFF_SEC * (2**attempt))
-                continue
-            if result.returncode == 0:
-                yield tmp.name
-                return
-            stderr = (result.stderr or "").strip()
-            stdout = (result.stdout or "").strip()
-            last_error = stderr or stdout or "no output"
-            if "could not read Username" in stderr or "Authentication failed" in stderr:
-                raise RepoCloneError(f"Git authentication failed: {stderr[:300]}")
-            if "Repository not found" in stderr or "404" in stderr:
-                raise RepoCloneError(f"Repository not found or inaccessible: {stderr[:300]}")
-            if not _is_transient_clone_error(stderr, stdout) or attempt >= MAX_CLONE_RETRIES:
-                raise RepoCloneError(
-                    f"git clone failed (exit {result.returncode}): {last_error[:400]}"
-                )
+                except subprocess.TimeoutExpired:
+                    last_error = "Clone timed out"
+                    result = None
+                    break
+                if result.returncode == 0:
+                    yield tmp.name
+                    return
+                stderr = (result.stderr or "").strip()
+                stdout = (result.stdout or "").strip()
+                last_error = stderr or stdout or "no output"
+                if branch and ("not found" in stderr.lower() or "does not exist" in stderr.lower()):
+                    continue
+                if "could not read Username" in stderr or "Authentication failed" in stderr:
+                    raise RepoCloneError(f"Git authentication failed: {stderr[:300]}")
+                if "Repository not found" in stderr or "404" in stderr:
+                    raise RepoCloneError(f"Repository not found or inaccessible: {stderr[:300]}")
+                if not branch:
+                    break
+            if (result is None or result.returncode != 0) and (not _is_transient_clone_error(last_error or "", "") or attempt >= MAX_CLONE_RETRIES):
+                raise RepoCloneError(f"git clone failed: {(last_error or '')[:400]}")
             if attempt < MAX_CLONE_RETRIES:
                 time.sleep(INITIAL_BACKOFF_SEC * (2**attempt))
-        raise RepoCloneError(
-            f"git clone failed: {last_error or 'unknown'}"
-        )
+        raise RepoCloneError(f"git clone failed: {last_error or 'unknown'}")
     finally:
         tmp.cleanup()
 
 
 def extract_git_history(repo_path: str) -> list[dict[str, Any]]:
-    """Run git log --oneline --reverse; return list of {message, timestamp}."""
+    """Run git log on current (main) branch; return list of {message, timestamp}."""
     path = Path(repo_path)
     if not path.is_dir():
         return []
     result = subprocess.run(
-        ["git", "log", "--oneline", "--reverse", "--format=%h %s%n%ci"],
+        ["git", "log", "--oneline", "--reverse", "-n", "500", "--format=%h %s%n%ci"],
         capture_output=True,
         text=True,
         timeout=GIT_LOG_TIMEOUT_SEC,
@@ -114,17 +113,68 @@ def extract_git_history(repo_path: str) -> list[dict[str, Any]]:
     if result.returncode != 0:
         return []
     out = (result.stdout or "").strip()
+    lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
     entries = []
-    for block in out.split("\n\n"):
-        lines = block.strip().split("\n")
-        if not lines:
-            continue
-        first = lines[0]
+    i = 0
+    while i + 1 < len(lines):
+        first = lines[i]
+        ts = lines[i + 1]
         parts = first.split(" ", 1)
         message = parts[1] if len(parts) > 1 else first
-        ts = lines[1].strip() if len(lines) > 1 else ""
         entries.append({"message": message, "timestamp": ts})
+        i += 2
     return entries
+
+
+def analyze_git_forensic(history: list[dict[str, Any]]) -> dict[str, Any]:
+    """
+    Analyze commit history for rubric git_forensic_analysis: progression story vs bulk upload.
+    Returns: count, progression_story (bool), bulk_upload (bool), message_sample, timestamp_sample, summary (str).
+    """
+    out: dict[str, Any] = {
+        "count": len(history),
+        "progression_story": False,
+        "bulk_upload": False,
+        "message_sample": [],
+        "timestamp_sample": [],
+        "summary": "",
+    }
+    if not history:
+        out["summary"] = "No commits found."
+        return out
+    out["message_sample"] = [h.get("message", "")[:60] for h in history[:15]]
+    out["timestamp_sample"] = [h.get("timestamp", "") for h in history[:10]]
+    lower_msgs = " ".join(h.get("message", "").lower() for h in history)
+    setup = "setup" in lower_msgs or "env" in lower_msgs or "init" in lower_msgs
+    tools = "tool" in lower_msgs or "repo" in lower_msgs or "clone" in lower_msgs
+    graph = "graph" in lower_msgs or "state" in lower_msgs or "orchestrat" in lower_msgs or "judge" in lower_msgs
+    out["progression_story"] = (out["count"] > 3) and (setup or tools or graph)
+    if out["count"] >= 5 and len(history) >= 3:
+        try:
+            from datetime import datetime
+            times = []
+            for h in history[:20]:
+                ts = h.get("timestamp", "")
+                if ts:
+                    parts = ts.replace("Z", "").split(" ")[0]
+                    if "T" in ts:
+                        parts = ts.split("T")[0]
+                    try:
+                        times.append(datetime.fromisoformat(parts.replace("Z", "").split(".")[0]))
+                    except Exception:
+                        pass
+            if len(times) >= 3:
+                span = (max(times) - min(times)).total_seconds()
+                out["bulk_upload"] = span < 3600
+        except Exception:
+            pass
+    if out["bulk_upload"]:
+        out["summary"] = f"{out['count']} commits; timestamps clustered (likely bulk upload)."
+    elif out["progression_story"]:
+        out["summary"] = f"{out['count']} commits; progression story (setup/tool/graph themes)."
+    else:
+        out["summary"] = f"{out['count']} commits; limited progression indicators."
+    return out
 
 
 def analyze_graph_structure(repo_path: str) -> dict[str, Any]:
@@ -217,3 +267,45 @@ def _arg_to_str(arg: ast.expr) -> str:
     if hasattr(ast, "unparse"):
         return ast.unparse(arg)
     return ""
+
+
+def scan_forensic_evidence(repo_path: str) -> dict[str, str]:
+    """Scan clone for rubric-aligned evidence: safe_tool, structured_output, judicial_nuance, chief_justice_synthesis."""
+    path = Path(repo_path)
+    out: dict[str, str] = {}
+    tools_file = path / "src" / "tools" / "repo_tools.py"
+    judges_file = path / "src" / "nodes" / "judges.py"
+    justice_file = path / "src" / "nodes" / "justice.py"
+    if tools_file.is_file():
+        try:
+            t = tools_file.read_text(encoding="utf-8", errors="replace")
+            has_tempfile = "TemporaryDirectory" in t and "tempfile" in t
+            has_subprocess = "subprocess.run" in t
+            has_os_system = "os.system" in t
+            out["safe_tool_engineering"] = (
+                f"tempfile.TemporaryDirectory()={has_tempfile}; "
+                f"subprocess.run() with capture_output/timeout={has_subprocess}; "
+                f"os.system() (unsafe)={has_os_system}"
+            )
+        except OSError:
+            pass
+    if judges_file.is_file():
+        try:
+            j = judges_file.read_text(encoding="utf-8", errors="replace")
+            has_structured = "with_structured_output" in j or "bind_tools" in j
+            has_judicial_opinion = "JudicialOpinion" in j
+            out["structured_output_enforcement"] = f"with_structured_output/bind_tools={has_structured}; JudicialOpinion_schema={has_judicial_opinion}"
+            if "Prosecutor" in j and "Defense" in j and "TechLead" in j:
+                out["judicial_nuance"] = "Prosecutor, Defense, TechLead personas present; distinct prompts"
+        except OSError:
+            pass
+    if justice_file.is_file():
+        try:
+            j = justice_file.read_text(encoding="utf-8", errors="replace")
+            has_security = "Rule of Security" in j or "security" in j.lower() and "cap" in j.lower()
+            has_evidence = "Rule of Evidence" in j or "overruled" in j
+            has_variance = "variance" in j and "2" in j
+            out["chief_justice_synthesis"] = f"Rule_of_Security={has_security}; Rule_of_Evidence={has_evidence}; variance_re_evaluation={has_variance}"
+        except OSError:
+            pass
+    return out
