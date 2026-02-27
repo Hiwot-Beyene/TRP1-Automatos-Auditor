@@ -45,7 +45,9 @@ def ReportAccuracyNode(state: dict[str, Any]) -> dict[str, Any]:
         }
 
     try:
-        chunks = ingest_pdf(pdf_path)
+        chunks = state.get("pdf_chunks")
+        if chunks is None:
+            chunks = ingest_pdf(pdf_path)
         pdf_text = " ".join(c.get("text", "") for c in chunks)
     except Exception as e:
         return {

@@ -34,6 +34,7 @@ class CriterionResult(BaseModel):
 
 class AuditReport(BaseModel):
     repo_url: str = ""
+    pdf_path: str = ""
     executive_summary: str = ""
     overall_score: float = 0.0
     criteria: list[CriterionResult] = Field(default_factory=list)
@@ -44,6 +45,8 @@ class AgentState(TypedDict, total=False):
     repo_url: str
     pdf_path: str
     rubric_dimensions: list[dict[str, Any]]
+    pdf_chunks: list[dict[str, Any]]
+    pdf_images: list[dict[str, Any]]
     evidences: Annotated[dict[str, list[Evidence]], operator.ior]
     opinions: Annotated[list[JudicialOpinion], operator.add]
     final_report: AuditReport

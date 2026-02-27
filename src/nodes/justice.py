@@ -2,6 +2,7 @@
 
 import json
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -133,87 +134,239 @@ def _resolve_final_score(
     return max(1, min(5, final)), dissent
 
 
+def _actionable_remediation(
+    dimension: dict,
+    ops: list[JudicialOpinion],
+    dissent_summary: str,
+    score: int,
+) -> str:
+    if score >= 4:
+        return ""
+    success = (dimension.get("success_pattern") or "").strip()
+    failure = (dimension.get("failure_pattern") or "").strip()
+    low = [o for o in ops if o.score <= 3 and (o.argument or "").strip()]
+    parts = []
+    if success:
+        parts.append(f"Aim for: {success[:220]}{'...' if len(success) > 220 else ''}")
+    if failure:
+        parts.append(f"Avoid: {failure[:180]}{'...' if len(failure) > 180 else ''}")
+    if low and low[0].argument:
+        arg = (low[0].argument or "").strip()[:200]
+        if len(low[0].argument or "") > 200:
+            arg += "..."
+        parts.append(f"({low[0].judge}): {arg}")
+    if dissent_summary and dissent_summary not in (success + failure):
+        parts.append(dissent_summary)
+    return " ".join(parts).strip() or "Review evidence and address gaps noted by Prosecutor and Tech Lead."
+
+
+def _build_executive_summary(
+    state: dict[str, Any],
+    criteria: list[CriterionResult],
+    overall: float,
+) -> str:
+    repo_url = (state.get("repo_url") or "").strip()
+    pdf_path = (state.get("pdf_path") or "").strip()
+    audited: list[str] = []
+    if repo_url:
+        audited.append("repository")
+    if pdf_path:
+        audited.append("document")
+    scope = " and ".join(audited) if audited else "submission"
+    n = len(criteria)
+    score_line = f"Overall score: {overall:.1f}/5 across {n} criteria."
+
+    strong = [c for c in criteria if c.final_score >= 4]
+    weak = [c for c in criteria if c.final_score <= 2]
+    with_dissent = [c for c in criteria if c.dissent_summary]
+
+    parts = [f"This report summarizes the audit of the {scope}. {score_line}"]
+
+    if weak:
+        weak_names = ", ".join(c.dimension_name for c in weak[:3])
+        if len(weak) > 3:
+            weak_names += f" (and {len(weak) - 3} other)"
+        parts.append(f"Criteria requiring attention: {weak_names}.")
+    elif strong and len(strong) == n:
+        parts.append("All criteria meet or exceed the target threshold.")
+    elif strong:
+        parts.append(f"{len(strong)} criteria meet or exceed the target; review the breakdown for the rest.")
+
+    if with_dissent:
+        parts.append("Notable dissents or synthesis rules applied are noted in the criterion breakdown.")
+    return " ".join(parts)
+
+
+def _build_remediation_plan(criteria: list[CriterionResult]) -> str:
+    need_work = [c for c in criteria if c.final_score < 4]
+    if not need_work:
+        return (
+            "All criteria meet or exceed the target threshold (4/5). "
+            "No mandatory remediation. Consider optional improvements from the criterion breakdown and judge opinions."
+        )
+    lines = [
+        "The following criteria scored below the target threshold. Address each to improve the overall audit outcome:",
+        "",
+    ]
+    for i, c in enumerate(need_work, 1):
+        bullet = f"{i}. **{c.dimension_name}** (score: {c.final_score}/5)"
+        lines.append(bullet)
+        if c.remediation:
+            lines.append(f"   - {c.remediation[:500]}{'...' if len(c.remediation) > 500 else ''}")
+        elif c.dissent_summary:
+            lines.append(f"   - {c.dissent_summary}")
+        low_opinions = [o for o in c.judge_opinions if o.score <= 3 and (o.argument or "").strip()]
+        if low_opinions and not c.remediation:
+            for o in low_opinions[:2]:
+                arg = (o.argument or "").strip()[:200]
+                if len(o.argument or "") > 200:
+                    arg += "..."
+                if arg:
+                    lines.append(f"   - {o.judge} (score {o.score}): {arg}")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
 def ChiefJusticeNode(state: dict[str, Any]) -> dict[str, Any]:
     opinions: list[JudicialOpinion] = state.get("opinions") or []
     evidences = state.get("evidences") or {}
     rubric = _load_rubric()
-    dimensions = {d["id"]: d for d in rubric.get("dimensions", [])}
     synthesis_rules = rubric.get("synthesis_rules") or {}
 
     grouped = _group_opinions_by_criterion(opinions)
+    in_scope_dims = state.get("rubric_dimensions")
+    rubric_dims_order = (in_scope_dims if in_scope_dims is not None else rubric.get("dimensions", []))
     criteria: list[CriterionResult] = []
-    for criterion_id, ops in grouped.items():
-        dim = dimensions.get(criterion_id, {})
+    for dim in rubric_dims_order:
+        criterion_id = dim.get("id", "")
         dim_name = dim.get("name", criterion_id)
-        final_score, dissent_summary = _resolve_final_score(
-            criterion_id, dim_name, ops, evidences, synthesis_rules
-        )
-        criteria.append(CriterionResult(
-            dimension_id=criterion_id,
-            dimension_name=dim_name,
-            final_score=final_score,
-            judge_opinions=ops,
-            dissent_summary=dissent_summary or None,
-            remediation="",
-        ))
-
-    for dim in rubric.get("dimensions", []):
-        if dim["id"] not in grouped:
+        ops = grouped.get(criterion_id, [])
+        if ops:
+            final_score, dissent_summary = _resolve_final_score(
+                criterion_id, dim_name, ops, evidences, synthesis_rules
+            )
+            remediation = _actionable_remediation(dim, ops, dissent_summary or "", final_score)
             criteria.append(CriterionResult(
-                dimension_id=dim["id"],
-                dimension_name=dim.get("name", dim["id"]),
+                dimension_id=criterion_id,
+                dimension_name=dim_name,
+                final_score=final_score,
+                judge_opinions=ops,
+                dissent_summary=dissent_summary or None,
+                remediation=remediation,
+            ))
+        else:
+            criteria.append(CriterionResult(
+                dimension_id=criterion_id,
+                dimension_name=dim_name,
                 final_score=3,
                 judge_opinions=[],
                 dissent_summary="No judge opinions for this criterion.",
-                remediation="",
+                remediation=_actionable_remediation(dim, [], "No judge opinions.", 3),
             ))
 
     overall = sum(c.final_score for c in criteria) / len(criteria) if criteria else 0.0
     report = AuditReport(
         repo_url=state.get("repo_url") or "",
-        executive_summary=f"Audit completed. {len(criteria)} criteria evaluated. Overall score: {overall:.1f}/5.",
+        pdf_path=state.get("pdf_path") or "",
+        executive_summary=_build_executive_summary(state, criteria, overall),
         overall_score=overall,
         criteria=criteria,
-        remediation_plan="Review criterion breakdown and dissent summaries for remediation.",
+        remediation_plan=_build_remediation_plan(criteria),
     )
 
     md = _report_to_markdown(report)
+    audit_dir = Path.cwd() / "audit"
+    audit_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    timestamped_path = audit_dir / f"report_{timestamp}.md"
+    timestamped_path.write_text(md, encoding="utf-8")
+    (audit_dir / "audit_report.md").write_text(md, encoding="utf-8")
+
     out_dir = state.get("audit_output_dir")
     if out_dir:
-        out_path = Path(out_dir) / "audit_report.md"
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(md, encoding="utf-8")
-    out_path = Path.cwd() / "reports" / "audit_report.md"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(md, encoding="utf-8")
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+        (Path(out_dir) / "audit_report.md").write_text(md, encoding="utf-8")
 
     return {"final_report": report}
 
 
 def _report_to_markdown(r: AuditReport) -> str:
+    """Structured Markdown per challenge: Executive Summary → Criterion Breakdown (verdict, dissent, opinions with cited evidence) → Remediation Plan."""
+    repo_display = (r.repo_url or "").strip() or "N/A"
+    pdf_display = (r.pdf_path or "").strip() or None
+    target = 4
+    verdict_label = "below target" if r.overall_score < target else ("at or above target" if r.overall_score >= target else "below target")
+
     lines = [
-        "# Automaton Auditor — Audit Report",
+        "# Audit Report",
+        "",
+        "**Repository:** " + repo_display,
+    ]
+    if pdf_display:
+        lines.append("**Document (PDF):** " + pdf_display)
+    lines.extend([
+        f"**Overall Score (Verdict):** {r.overall_score:.2f}/5 — {verdict_label} (threshold {target}/5).",
+        "",
+        "---",
         "",
         "## Executive Summary",
+        "",
         r.executive_summary,
         "",
-        f"**Overall score:** {r.overall_score:.1f}/5",
+        "---",
         "",
         "## Criterion Breakdown",
         "",
-    ]
+        "One section per rubric dimension: final score (verdict), dissent summary where applicable, and the three judge opinions with cited evidence.",
+        "",
+    ])
+
+    judge_order = ("Defense", "Prosecutor", "TechLead")
     for c in r.criteria:
         lines.append(f"### {c.dimension_name} (`{c.dimension_id}`)")
-        lines.append(f"- **Final score:** {c.final_score}/5")
-        if c.dissent_summary:
-            lines.append(f"- **Dissent:** {c.dissent_summary}")
-        for op in c.judge_opinions:
-            arg = (op.argument or "")[:150]
-            if len(op.argument or "") > 150:
-                arg += "..."
-            lines.append(f"- **{op.judge}:** {op.score} — {arg}")
         lines.append("")
-    lines.append("## Remediation Plan")
-    lines.append(r.remediation_plan)
+        lines.append(f"- **Verdict (Final Score):** {c.final_score}/5")
+        if c.dissent_summary:
+            lines.append(f"- **Dissent:** " + (c.dissent_summary.strip()[:400] + ("..." if len(c.dissent_summary) > 400 else "")))
+        rem_line = (c.remediation or "").strip()
+        if rem_line:
+            lines.append(f"- **Remediation:** " + (rem_line[:350] + ("..." if len(rem_line) > 350 else "")))
+        lines.append("")
+        for judge_name in judge_order:
+            op = next((o for o in c.judge_opinions if o.judge == judge_name), None)
+            if op:
+                arg = (op.argument or "").strip()
+                if len(arg) > 280:
+                    arg = arg[:277] + "..."
+                lines.append(f"- **{op.judge}** (score {op.score}): {arg or '—'}")
+                cited = getattr(op, "cited_evidence", None) or []
+                if isinstance(cited, list) and cited:
+                    refs = ", ".join(str(x)[:80] for x in cited[:5])
+                    if len(cited) > 5:
+                        refs += ", …"
+                    lines.append(f"  - *Cited evidence:* " + refs)
+        lines.append("")
+
+    lines.extend([
+        "---",
+        "",
+        "## Remediation Plan",
+        "",
+        "Specific, file-level instructions for the trainee. Criteria scoring below the target threshold (4/5) are listed with actionable steps.",
+        "",
+    ])
+    need_work = [c for c in r.criteria if c.final_score < 4]
+    if not need_work:
+        lines.append("All criteria meet or exceed the target threshold. No mandatory remediation.")
+    else:
+        for i, c in enumerate(need_work, 1):
+            line = (c.remediation or c.dissent_summary or "").strip()
+            if not line:
+                line = "Review evidence and address gaps noted by Prosecutor and Tech Lead."
+            if len(line) > 400:
+                line = line[:397] + "..."
+            lines.append(f"{i}. **{c.dimension_name}** (score {c.final_score}/5)")
+            lines.append(f"   - {line}")
+            lines.append("")
     lines.append("")
     return "\n".join(lines)
