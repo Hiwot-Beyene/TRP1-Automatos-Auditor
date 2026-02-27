@@ -256,7 +256,7 @@ export default function Home() {
                     </li>
                   ))}
                 </ul>
-              )}
+              ) : null}
             </li>
           ))}
         </ul>
