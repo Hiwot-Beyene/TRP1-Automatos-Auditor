@@ -142,36 +142,46 @@ def analyze_git_forensic(history: list[dict[str, Any]]) -> dict[str, Any]:
     if not history:
         out["summary"] = "No commits found."
         return out
-    out["message_sample"] = [h.get("message", "")[:60] for h in history[:15]]
+    out["message_sample"] = [h.get("message", "")[:60] for h in history[:20]]
     out["timestamp_sample"] = [h.get("timestamp", "") for h in history[:10]]
     lower_msgs = " ".join(h.get("message", "").lower() for h in history)
     setup = "setup" in lower_msgs or "env" in lower_msgs or "init" in lower_msgs
     tools = "tool" in lower_msgs or "repo" in lower_msgs or "clone" in lower_msgs
     graph = "graph" in lower_msgs or "state" in lower_msgs or "orchestrat" in lower_msgs or "judge" in lower_msgs
-    out["progression_story"] = (out["count"] > 3) and (setup or tools or graph)
-    if out["count"] >= 5 and len(history) >= 3:
+    iterative = "feat" in lower_msgs or "fix" in lower_msgs or "refactor" in lower_msgs or "chore" in lower_msgs or "docs" in lower_msgs or "add" in lower_msgs or "implement" in lower_msgs
+    out["progression_story"] = (out["count"] > 3) and (setup or tools or graph or iterative)
+    if out["count"] >= 3:
         try:
             from datetime import datetime
             times = []
-            for h in history[:20]:
-                ts = h.get("timestamp", "")
-                if ts:
-                    parts = ts.replace("Z", "").split(" ")[0]
-                    if "T" in ts:
-                        parts = ts.split("T")[0]
+            for h in history:
+                ts = (h.get("timestamp") or "").strip()
+                if not ts:
+                    continue
+                parts = ts.split()
+                if len(parts) >= 2:
+                    date_part = parts[0]
+                    time_part = parts[1][:8]
                     try:
-                        times.append(datetime.fromisoformat(parts.replace("Z", "").split(".")[0]))
+                        times.append(datetime.fromisoformat(f"{date_part} {time_part}"))
                     except Exception:
                         pass
-            if len(times) >= 3:
-                span = (max(times) - min(times)).total_seconds()
-                out["bulk_upload"] = span < 3600
+                elif parts:
+                    try:
+                        times.append(datetime.fromisoformat(parts[0]))
+                    except Exception:
+                        pass
+            if len(times) >= 2:
+                span_sec = (max(times) - min(times)).total_seconds()
+                out["bulk_upload"] = span_sec < 3600 and out["count"] >= 10
         except Exception:
             pass
+    if out["count"] <= 2:
+        out["bulk_upload"] = True
     if out["bulk_upload"]:
         out["summary"] = f"{out['count']} commits; timestamps clustered (likely bulk upload)."
     elif out["progression_story"]:
-        out["summary"] = f"{out['count']} commits; progression story (setup/tool/graph themes)."
+        out["summary"] = f"{out['count']} commits; progression story (iterative/setup/tool/graph themes)."
     else:
         out["summary"] = f"{out['count']} commits; limited progression indicators."
     return out
@@ -294,7 +304,10 @@ def scan_forensic_evidence(repo_path: str) -> dict[str, str]:
             j = judges_file.read_text(encoding="utf-8", errors="replace")
             has_structured = "with_structured_output" in j or "bind_tools" in j
             has_judicial_opinion = "JudicialOpinion" in j
-            out["structured_output_enforcement"] = f"with_structured_output/bind_tools={has_structured}; JudicialOpinion_schema={has_judicial_opinion}"
+            has_retry = "retry" in j.lower() and ("JUDGE_RETRY" in j or "attempt" in j)
+            out["structured_output_enforcement"] = (
+                f"with_structured_output/bind_tools={has_structured}; JudicialOpinion_schema={has_judicial_opinion}; retry_logic={has_retry}"
+            )
             if "Prosecutor" in j and "Defense" in j and "TechLead" in j:
                 out["judicial_nuance"] = "Prosecutor, Defense, TechLead personas present; distinct prompts"
         except OSError:

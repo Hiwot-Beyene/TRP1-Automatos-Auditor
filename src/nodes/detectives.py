@@ -48,8 +48,9 @@ def RunRelevantDetectivesNode(state: dict[str, Any]) -> dict[str, Any]:
                 pdf_bytes = pdf_to_binary(pdf_path)
                 state_pdf["pdf_chunks"] = ingest_pdf(pdf_path=pdf_path, pdf_bytes=pdf_bytes)
                 state_pdf["pdf_images"] = extract_images_from_pdf(pdf_path=pdf_path, pdf_bytes=pdf_bytes)
-            except Exception:
-                pass
+            except Exception as e:
+                state_pdf["pdf_path"] = ""
+                state_pdf["pdf_fetch_error"] = str(e).strip()[:250]
         report_tasks.append(("doc", DocAnalystNode, state_pdf))
         report_tasks.append(("vision", VisionInspectorNode, state_pdf))
 
@@ -103,7 +104,7 @@ def RepoInvestigatorNode(state: dict[str, Any]) -> dict[str, Any]:
             forensic_scan = repo_tools.scan_forensic_evidence(path)
             git_forensic = repo_tools.analyze_git_forensic(history) if history else {}
             llm_rationale: str | None = None
-            if os.environ.get("GROQ_API_KEY"):
+            if os.environ.get("GROQ_API_KEY") and not os.environ.get("AUDITOR_FAST_REPO"):
                 try:
                     from langchain_groq import ChatGroq
                     llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.2)
@@ -133,12 +134,32 @@ def RepoInvestigatorNode(state: dict[str, Any]) -> dict[str, Any]:
                         f"timestamp_sample={gf.get('timestamp_sample', [])[:5]}"
                     )
                     content += "; " + content_base
+                elif dim_id == "state_management_rigor":
+                    classes = graph_info.get("state_classes", [])
+                    reducers = graph_info.get("reducers", [])
+                    has_evidence = "Evidence" in classes
+                    has_opinion = "JudicialOpinion" in classes
+                    has_reducers = "add" in reducers or "ior" in reducers
+                    found = has_evidence and has_opinion and has_reducers
+                    explicit = (
+                        f"Pydantic_Evidence={has_evidence}; Pydantic_JudicialOpinion={has_opinion}; "
+                        f"reducers_operator_add_ior={has_reducers}; state_classes={classes}; reducers={reducers}"
+                    )
+                    content = explicit + "; " + content_base
                 elif dim_id in forensic_scan:
-                    content = content_base + "; " + forensic_scan[dim_id]
+                    content = forensic_scan[dim_id] + "; " + content_base
                 forensic = (d.get("forensic_instruction") or "").lower()
                 if dim_id == "git_forensic_analysis":
                     found = bool(git_forensic.get("progression_story")) and not bool(git_forensic.get("bulk_upload"))
                     conf = 0.85 if found else (0.5 if git_forensic.get("count", 0) > 3 else 0.3)
+                elif dim_id == "state_management_rigor":
+                    classes = graph_info.get("state_classes") or []
+                    reducers = graph_info.get("reducers") or []
+                    has_evidence = "Evidence" in classes
+                    has_opinion = "JudicialOpinion" in classes
+                    has_reducers = "add" in reducers or "ior" in reducers
+                    found = has_evidence and has_opinion and has_reducers
+                    conf = 0.9 if found else (0.5 if (has_evidence or has_opinion) else 0.3)
                 elif "git" in forensic or "commit" in forensic or "history" in forensic:
                     found = len(history) > 0
                     conf = 0.9 if len(history) > 3 else 0.5
@@ -173,8 +194,9 @@ def DocAnalystNode(state: dict[str, Any]) -> dict[str, Any]:
     dimensions = [d for d in dimensions if d.get("id") == "theoretical_depth"]
     pdf_path = state.get("pdf_path") or ""
     if not pdf_path and not state.get("pdf_chunks"):
+        rationale = state.get("pdf_fetch_error") or "No pdf_path in state"
         evidences = {
-            d.get("id", "unknown"): [_evidence(d.get("id", "unknown"), False, None, "", "No pdf_path in state", 0.0)]
+            d.get("id", "unknown"): [_evidence(d.get("id", "unknown"), False, None, "", rationale, 0.0)]
             for d in dimensions
         } if dimensions else {}
         return {"evidences": evidences}
@@ -211,6 +233,10 @@ def DocAnalystNode(state: dict[str, Any]) -> dict[str, Any]:
         for d in dimensions:
             dim_id = d.get("id", "unknown")
             evidences[dim_id] = [_evidence(dim_id, False, None, pdf_path or "", str(e)[:200], 0.0)]
+    except Exception as e:
+        for d in dimensions:
+            dim_id = d.get("id", "unknown")
+            evidences[dim_id] = [_evidence(dim_id, False, None, pdf_path or "", str(e).strip()[:200], 0.0)]
     return {"evidences": evidences}
 
 
@@ -219,8 +245,9 @@ def VisionInspectorNode(state: dict[str, Any]) -> dict[str, Any]:
     dimensions = _dimensions_for_artifact(state.get("rubric_dimensions"), PDF_IMAGES_ARTIFACT)
     pdf_path = state.get("pdf_path") or ""
     if not pdf_path and not state.get("pdf_images"):
+        rationale = state.get("pdf_fetch_error") or "No pdf_path in state"
         evidences = {
-            d.get("id", "unknown"): [_evidence(d.get("id", "unknown"), False, None, "", "No pdf_path in state", 0.0)]
+            d.get("id", "unknown"): [_evidence(d.get("id", "unknown"), False, None, "", rationale, 0.0)]
             for d in dimensions
         } if dimensions else {}
         return {"evidences": evidences}
@@ -229,8 +256,15 @@ def VisionInspectorNode(state: dict[str, Any]) -> dict[str, Any]:
 
     evidences: dict[str, list[Evidence]] = {}
     images = state.get("pdf_images")
-    if images is None:
-        images = extract_images_from_pdf(pdf_path)
+    if images is None and pdf_path:
+        try:
+            images = extract_images_from_pdf(pdf_path)
+        except Exception as e:
+            for d in dimensions:
+                dim_id = d.get("id", "unknown")
+                evidences[dim_id] = [_evidence(dim_id, False, None, pdf_path, str(e).strip()[:250], 0.0)]
+            return {"evidences": evidences}
+    images = images or []
     content: str | None = None
     rationale = "No images extracted from PDF"
     confidence = 0.5
