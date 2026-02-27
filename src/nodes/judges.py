@@ -1,39 +1,62 @@
-"""Judge nodes: Prosecutor, Defense, TechLead. Groq with configurable model (default 8b for higher rate limits)."""
+"""Judge nodes: Prosecutor, Defense, TechLead. Groq or Gemini (configurable); model configurable via env."""
 
 import json
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from typing import Any, Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 
+from src.rubric_loader import get_synthesis_rules
 from src.state import Evidence, JudicialOpinion
 
 
 JUDGE_RETRY_ATTEMPTS = 2
-GROQ_JUDGE_MODEL = os.environ.get("GROQ_JUDGE_MODEL", "llama-3.1-8b-instant")
-RUBRIC_PATH = Path(__file__).resolve().parent.parent.parent / "rubric.json"
+GROQ_JUDGE_MODEL = os.environ.get("GROQ_JUDGE_MODEL", "llama-3.3-70b-versatile")
+EVIDENCE_SUMMARY_MAX_CHARS = 1200
 
-
-def _load_synthesis_rules() -> dict[str, str]:
-    for p in (RUBRIC_PATH, Path.cwd() / "rubric.json"):
-        if p.is_file():
-            try:
-                data = json.loads(p.read_text(encoding="utf-8"))
-                return data.get("synthesis_rules") or {}
-            except (json.JSONDecodeError, OSError):
-                pass
-    return {}
+_judge_llm_groq: Any = None
+_judge_llm_google: Any = None
 
 
 def _get_llm():
+    """Prefer Groq; if JUDGE_PROVIDER=google or Groq unavailable, use Gemini when GOOGLE_API_KEY set."""
+    provider = (os.environ.get("JUDGE_PROVIDER") or "groq").strip().lower()
+    if provider == "google":
+        return _get_llm_google()
+    if os.environ.get("GROQ_API_KEY"):
+        return _get_llm_groq()
+    return _get_llm_google()
+
+
+def _get_llm_groq():
+    global _judge_llm_groq
     if not os.environ.get("GROQ_API_KEY"):
         return None
-    model = os.environ.get("GROQ_JUDGE_MODEL", GROQ_JUDGE_MODEL) or GROQ_JUDGE_MODEL
-    return ChatGroq(model=model, temperature=0.6)
+    if _judge_llm_groq is None:
+        model = os.environ.get("GROQ_JUDGE_MODEL") or GROQ_JUDGE_MODEL
+        _judge_llm_groq = ChatGroq(model=model, temperature=0.6)
+    return _judge_llm_groq
+
+
+def _get_llm_google():
+    global _judge_llm_google
+    if not os.environ.get("GOOGLE_API_KEY"):
+        return None
+    if _judge_llm_google is None:
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            model = os.environ.get("GOOGLE_GEMINI_MODEL", "gemini-2.0-flash")
+            _judge_llm_google = ChatGoogleGenerativeAI(model=model, temperature=0.6)
+        except Exception:
+            return None
+    return _judge_llm_google
+
+
+def _load_synthesis_rules() -> dict[str, str]:
+    return get_synthesis_rules()
 
 
 def _evidence_summary(evidences: dict[str, list[Evidence]], dimension_id: str) -> str:
@@ -41,13 +64,20 @@ def _evidence_summary(evidences: dict[str, list[Evidence]], dimension_id: str) -
     if not elist:
         return "No evidence collected for this criterion."
     parts = []
+    total = 0
     for e in elist[:5]:
+        if total >= EVIDENCE_SUMMARY_MAX_CHARS:
+            break
         line = f"- found={e.found}, location={e.location}"
         if e.rationale:
             line += f", rationale={e.rationale[:200]}"
         if e.content:
-            line += f"\n  content: {(e.content[:400] + '...') if len(e.content) > 400 else e.content}"
+            content_snippet = (e.content[:400] + "...") if len(e.content) > 400 else e.content
+            line += f"\n  content: {content_snippet}"
+        if total + len(line) > EVIDENCE_SUMMARY_MAX_CHARS:
+            line = line[: EVIDENCE_SUMMARY_MAX_CHARS - total - 3] + "..."
         parts.append(line)
+        total += len(line)
     return "\n".join(parts) if parts else "No evidence."
 
 
@@ -89,7 +119,7 @@ def _opinion_for_dimension(
 ) -> JudicialOpinion:
     llm = _get_llm()
     if llm is None:
-        return JudicialOpinion(judge=judge_name, criterion_id=dimension.get("id", "unknown"), score=3, argument="GROQ_API_KEY not set; placeholder opinion", cited_evidence=[])
+        return JudicialOpinion(judge=judge_name, criterion_id=dimension.get("id", "unknown"), score=3, argument="No judge LLM (set GROQ_API_KEY or GOOGLE_API_KEY); placeholder opinion", cited_evidence=[])
     dim_id = dimension.get("id", "unknown")
     dim_name = dimension.get("name", "")
     instruction = dimension.get("forensic_instruction", "")
@@ -114,49 +144,67 @@ Provide your opinion: score (1-5 integer), argument (string), and cited_evidence
 You must respond with ONLY a valid JSON object, no other text. Use this exact shape:
 {"score": <1-5>, "argument": "<your reasoning>", "cited_evidence": ["<quote1>", "<quote2>"]}"""
 
+    json_system = system_prompt + "\n\nYou must respond with ONLY a valid JSON object: {\"score\": <1-5>, \"argument\": \"...\", \"cited_evidence\": [...]}. No markdown, no explanation outside the JSON."
+
+    def try_llm(use_structured: bool):
+        nonlocal llm
+        if use_structured:
+            try:
+                structured_llm = llm.with_structured_output(JudicialOpinion)
+                out = structured_llm.invoke([
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=user_base),
+                ])
+                if isinstance(out, JudicialOpinion):
+                    return JudicialOpinion(judge=judge_name, criterion_id=dim_id, score=out.score, argument=out.argument or "", cited_evidence=out.cited_evidence or [])
+            except Exception:
+                pass
+        raw = llm.invoke([
+            SystemMessage(content=json_system),
+            HumanMessage(content=user_json),
+        ])
+        content = getattr(raw, "content", None) or str(raw)
+        parsed = _parse_json_fallback(content)
+        if parsed:
+            score = int(parsed.get("score", 3))
+            score = max(1, min(5, score))
+            argument = str(parsed.get("argument", "")) or "Parsed from JSON"
+            cited = parsed.get("cited_evidence")
+            cited = [str(x) for x in (cited[:10] if isinstance(cited, list) else ([str(c) for c in cited] if cited else []))]
+            return JudicialOpinion(judge=judge_name, criterion_id=dim_id, score=score, argument=argument[:2000], cited_evidence=cited)
+        return None
+
+    last_error: str | None = None
     for attempt in range(JUDGE_RETRY_ATTEMPTS):
-        last_error: str | None = None
+        use_structured = attempt == 0
         try:
-            structured_llm = llm.with_structured_output(JudicialOpinion)
-            out = structured_llm.invoke([
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_base),
-            ])
-            if isinstance(out, JudicialOpinion):
-                return JudicialOpinion(judge=judge_name, criterion_id=dim_id, score=out.score, argument=out.argument or "", cited_evidence=out.cited_evidence or [])
+            result = try_llm(use_structured)
+            if result is not None:
+                return result
         except Exception as e:
-            last_error = str(e).strip() or e.__class__.__name__
-            if len(last_error) > 120:
-                last_error = last_error[:117] + "..."
-
-        try:
-            raw = llm.invoke([
-                SystemMessage(content=system_prompt + "\n\nYou must respond with ONLY a valid JSON object: {\"score\": <1-5>, \"argument\": \"...\", \"cited_evidence\": [...]}. No markdown, no explanation outside the JSON."),
-                HumanMessage(content=user_json),
-            ])
-            content = getattr(raw, "content", None) or str(raw)
-            parsed = _parse_json_fallback(content)
-            if parsed:
-                score = int(parsed.get("score", 3))
-                if score < 1:
-                    score = 1
-                if score > 5:
-                    score = 5
-                argument = str(parsed.get("argument", "")) or "Parsed from JSON fallback"
-                cited = parsed.get("cited_evidence")
-                if not isinstance(cited, list):
-                    cited = [str(c) for c in cited] if cited else []
-                else:
-                    cited = [str(x) for x in cited[:10]]
-                return JudicialOpinion(judge=judge_name, criterion_id=dim_id, score=score, argument=argument[:2000], cited_evidence=cited)
-        except Exception as e:
-            last_error = str(e).strip() or e.__class__.__name__
-            if len(last_error) > 120:
-                last_error = last_error[:117] + "..."
-
-        if attempt == JUDGE_RETRY_ATTEMPTS - 1:
-            msg = f"Parse/LLM error after retries: {last_error}" if last_error else "Judge failed to return structured output"
-            return JudicialOpinion(judge=judge_name, criterion_id=dim_id, score=3, argument=msg, cited_evidence=[])
+            err = str(e).strip() or e.__class__.__name__
+            last_error = err[:120] + "..." if len(err) > 120 else err
+            is_429 = "429" in err or "rate limit" in err.lower()
+            is_400 = "400" in err or "failed to call" in err.lower()
+            if is_400:
+                try:
+                    result = try_llm(False)
+                    if result is not None:
+                        return result
+                except Exception:
+                    pass
+            if (is_429 or is_400) and _get_llm_groq() is llm:
+                fallback = _get_llm_google()
+                if fallback:
+                    llm = fallback
+                    try:
+                        result = try_llm(False)
+                        if result is not None:
+                            return result
+                    except Exception:
+                        pass
+        if attempt == JUDGE_RETRY_ATTEMPTS - 1 and last_error:
+            return JudicialOpinion(judge=judge_name, criterion_id=dim_id, score=3, argument=f"Parse/LLM error after retries: {last_error}", cited_evidence=[])
 
     return JudicialOpinion(judge=judge_name, criterion_id=dim_id, score=3, argument="Judge error", cited_evidence=[])
 
