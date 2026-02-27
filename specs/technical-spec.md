@@ -13,13 +13,13 @@ The system uses a **free-tier multi-model stack**. Which LLM powers which node i
 
 | Node(s) | Model / Service |
 |---------|-----------------|
-| RepoInvestigator (optional LLM) | Groq — Llama 3.1 70B |
-| Prosecutor, Defense, TechLead | Groq — Llama 3.1 70B |
-| DocAnalyst, VisionInspector | Google Gemini 1.5 Flash |
+| RepoInvestigator (optional LLM) | Groq (configurable; e.g. Llama 3.1 8B) |
+| Prosecutor, Defense, TechLead | Groq (default model configurable; default llama-3.3-70b-versatile) or Gemini when JUDGE_PROVIDER=google or on 429/400 fallback |
+| DocAnalyst, VisionInspector | Google Gemini 1.5 / 2.0 Flash |
 | Chief Justice | No LLM (deterministic only) |
 | Observability | LangSmith |
 
-No OpenAI (or other paid) API is required for the default stack. Env vars: `GROQ_API_KEY`, `GOOGLE_API_KEY`, `LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY` (see multi-model-stack-spec and .env.example).
+No OpenAI (or other paid) API is required for the default stack. Env vars: `GROQ_API_KEY`, `GROQ_JUDGE_MODEL`, `JUDGE_PROVIDER`, `GOOGLE_API_KEY`, `GOOGLE_GEMINI_MODEL`, `LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY` (see multi-model-stack-spec and .env.example).
 
 ---
 
@@ -106,7 +106,7 @@ See phase specs for phase-specific files. Full layout: src/state.py, src/tools/r
 
 ## 4. Tool Contracts
 
-RepoInvestigator: sandboxed clone (tempfile, subprocess.run with timeout and capture_output), extract_git_history(path), analyze_graph_structure(path) using AST (edges, decorators, inheritance; add_edge, add_conditional_edges, StateGraph, BaseModel, TypedDict, reducers); precise RepoCloneError for bad URL and auth failures. Optional LLM (Groq Llama 3.1 70B) for interpretation/summary per [multi-model-stack-spec.md](multi-model-stack-spec.md). DocAnalyst: ingest_pdf(path), RAG-lite; LLM for query/theoretical depth MUST use Gemini 1.5 Flash. VisionInspector: extract_images_from_pdf(path); vision analysis MUST use Gemini 1.5 Flash (vision); implementation and execution required for final deliverable.
+RepoInvestigator: sandboxed clone (tempfile, subprocess.run with timeout and capture_output), extract_git_history(path), analyze_graph_structure(path) using AST (edges, decorators, inheritance; add_edge, add_conditional_edges, StateGraph, BaseModel, TypedDict, reducers); precise RepoCloneError for bad URL and auth failures. Optional LLM (Groq, model configurable) for interpretation/summary per [multi-model-stack-spec.md](multi-model-stack-spec.md). DocAnalyst: ingest_pdf(path), RAG-lite; LLM for query/theoretical depth MUST use Gemini 1.5 / 2.0 Flash. VisionInspector: extract_images_from_pdf(path); vision analysis MUST use Gemini 1.5 / 2.0 Flash (vision); implementation and execution required for final deliverable.
 
 ---
 
@@ -118,7 +118,7 @@ START → [RepoInvestigator || DocAnalyst || VisionInspector] → EvidenceAggreg
 
 ## 6–7. Judicial and Chief Justice Requirements
 
-Judges: MUST use Groq Llama 3.1 70B per [multi-model-stack-spec.md](multi-model-stack-spec.md). `.with_structured_output(JudicialOpinion)` or `.bind_tools()`; distinct personas; retry on free text. ChiefJustice: hardcoded rules only; AuditReport → Markdown file.
+Judges: use Groq with configurable model (default llama-3.3-70b-versatile) or Gemini when JUDGE_PROVIDER=google or on Groq 429/400; see [multi-model-stack-spec.md](multi-model-stack-spec.md). `.with_structured_output(JudicialOpinion)` with JSON-only fallback on 400; distinct personas; retry on free text. ChiefJustice: hardcoded rules only; AuditReport → Markdown file.
 
 ---
 
