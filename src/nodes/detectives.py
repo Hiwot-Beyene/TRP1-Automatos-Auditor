@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from src.state import Evidence
+from src.config import get_detective_workers
 
 GITHUB_REPO_ARTIFACT = "github_repo"
 PDF_REPORT_ARTIFACT = "pdf_report"
@@ -59,7 +60,7 @@ def RunRelevantDetectivesNode(state: dict[str, Any]) -> dict[str, Any]:
     if not tasks:
         return {"evidences": merged}
 
-    max_workers = min(3, len(tasks))
+    max_workers = min(get_detective_workers(), len(tasks))
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(fn, s): name for name, fn, s in tasks}
         for future in as_completed(futures):

@@ -2,7 +2,7 @@
 
 Automaton Auditor — Digital Courtroom agent graph. Detectives (RepoInvestigator, DocAnalyst, VisionInspector) run in parallel → EvidenceAggregator → ReportAccuracy (cross-reference) → Judges (Prosecutor, Defense, TechLead) in parallel → Chief Justice → Markdown audit report.
 
-**Default LLM stack (free-tier):** Groq (Llama 3.1 70B) for Judges and optional RepoInvestigator; Google Gemini 1.5 Flash for DocAnalyst and VisionInspector; LangSmith for tracing. No OpenAI required.
+**Default LLM stack (free-tier):** Groq (configurable judge model; default llama-3.3-70b-versatile) for Judges and optional RepoInvestigator; Google Gemini for DocAnalyst and VisionInspector (and optional Judges fallback); LangSmith for tracing. No OpenAI required.
 
 ## Supported Python and lock file
 
@@ -18,6 +18,20 @@ Automaton Auditor — Digital Courtroom agent graph. Detectives (RepoInvestigato
 | **Frontend (Next.js)** | Optional: run API then `cd frontend && npm run dev` for the Web UI. |
 | **pytest** | `uv run pytest tests/ -v` for unit, contract, and integration tests. |
 | **Makefile** | None; use `uv` and the scripts above for common tasks. |
+
+## Final submission (challenge deliverables)
+
+The repository contains all required source code for the challenge:
+
+| Requirement | Location | Notes |
+|-------------|----------|--------|
+| **State definitions** | `src/state.py` | `Evidence`, `JudicialOpinion`, `CriterionResult`, `AuditReport`, `AgentState` (TypedDict) with reducers `operator.ior` (evidences), `operator.add` (opinions). |
+| **Forensic tools (repo)** | `src/tools/repo_tools.py` | Sandboxed clone (`tempfile.TemporaryDirectory`, `subprocess.run`), `extract_git_history`, `analyze_graph_structure` (AST), `analyze_git_forensic`, `scan_forensic_evidence`. `RepoCloneError` for bad URL/auth. |
+| **PDF / cross-reference tools** | `src/tools/doc_tools.py` | `ingest_pdf`, `pdf_to_binary`, `extract_images_from_pdf`, RAG-lite search, cross-reference helpers. |
+| **Detectives** | `src/nodes/detectives.py` | **RepoInvestigator** (repo tools only), **DocAnalyst** (PDF chunks + theoretical depth), **VisionInspector** (extract images + vision model). VisionInspector: implementation required, execution when PDF provided. |
+| **Judges** | `src/nodes/judges.py` | **Prosecutor**, **Defense**, **Tech Lead** with distinct system prompts. Uses `.with_structured_output(JudicialOpinion)` (and JSON fallback). Bound to Pydantic `JudicialOpinion` schema. |
+| **Chief Justice** | `src/nodes/justice.py` | **ChiefJusticeNode**: hardcoded deterministic rules (security override, fact supremacy, dissent when variance > 2). Produces `AuditReport`; serialized to Markdown; `final_report` in state. |
+| **Graph** | `src/graph.py` | **StateGraph**: START → `run_detectives` (parallel fan-out: repo / doc / vision) → `evidence_aggregator` (fan-in) → conditional (proceed | skip) → `report_accuracy` → `judicial_panel` (parallel fan-out: Prosecutor, Defense, TechLead) → `chief_justice` (fan-in) → END. Conditional edges for error handling. End-to-end: repo URL (+ optional PDF) input → Markdown report in `audit/`. |
 
 ## Interim submission checklist
 
@@ -40,6 +54,12 @@ Automaton Auditor — Digital Courtroom agent graph. Detectives (RepoInvestigato
 
 - **Python**: 3.10+ (see `pyproject.toml` requires-python; 3.10, 3.11, 3.12 recommended)
 - **Package manager**: [uv](https://docs.astral.sh/uv/)
+
+## Scalability (API)
+
+- **Sync vs async:** `POST /api/run` defaults to `?wait=true` (block until done, return result). Use `?wait=false` to get a `run_id` and poll `GET /api/run/{run_id}` for status and result so the HTTP worker isn’t blocked.
+- **Rate limit:** At most `AUDITOR_MAX_CONCURRENT_RUNS` graph runs execute at once (default 2) to avoid bursting LLM APIs.
+- **Configurable workers:** `AUDITOR_DETECTIVE_WORKERS` and `AUDITOR_JUDGE_WORKERS` (default 3 each) control parallelism inside a run; set in `.env` or see `.env.example`.
 
 ## Setup
 

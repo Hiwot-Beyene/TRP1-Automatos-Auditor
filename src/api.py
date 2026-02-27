@@ -1,4 +1,4 @@
-"""FastAPI backend: POST /api/run with rubric from rubric.json; GET /api/rubric."""
+"""FastAPI backend: POST /api/run (async job or sync with ?wait=true), GET /api/run/{run_id}, GET /api/rubric."""
 
 import re
 
@@ -6,12 +6,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from src.graph import build_detective_graph
 from src.parallelism_checks import run_parallelism_checks
+from src.run_store import get_run, submit_run
 from src.rubric_loader import get_dimensions, get_rubric
 from src.state import AuditReport, Evidence
 
@@ -47,9 +48,22 @@ class RunRequest(BaseModel):
 
 
 class RunResponse(BaseModel):
-    evidences: dict[str, list[dict]]
+    evidences: dict[str, list[dict]] | None = None
     final_report: dict | None = None
     overall_score: float | None = None
+
+
+class RunSubmittedResponse(BaseModel):
+    run_id: str
+    status: str = "pending"
+    message: str = "Run queued. Poll GET /api/run/{run_id} for status and result."
+
+
+class RunStatusResponse(BaseModel):
+    run_id: str
+    status: str
+    result: RunResponse | None = None
+    error: str | None = None
 
 
 class ParallelismTestResult(BaseModel):
@@ -82,8 +96,11 @@ def get_default_pdf_url(repo_url: str = "") -> dict:
     return {"pdf_url": default_pdf_url_from_repo(repo_url)}
 
 
-@app.post("/api/run", response_model=RunResponse)
-def run_audit(req: RunRequest) -> RunResponse:
+@app.post("/api/run")
+def run_audit(
+    req: RunRequest,
+    wait: bool = Query(True, description="If true (default), block until run completes and return result. If false, return run_id; poll GET /api/run/{run_id} for result."),
+):
     if not req.repo_url.strip() and not req.pdf_path.strip():
         raise HTTPException(
             status_code=400,
@@ -106,33 +123,57 @@ def run_audit(req: RunRequest) -> RunResponse:
             status_code=500,
             detail="No rubric dimensions (rubric.json missing or empty)",
         )
-    graph = build_detective_graph()
-    state = graph.invoke(
-        {
-            "repo_url": repo_url,
-            "pdf_path": pdf_path,
-            "rubric_dimensions": rubric_dimensions,
-        },
-        config={
-            "run_name": "Automaton Auditor",
-            "tags": ["audit", "api"],
-            "metadata": {
-                "repo_url": (repo_url or "")[:80],
-                "has_pdf": bool(pdf_path),
+
+    if wait:
+        graph = build_detective_graph()
+        state = graph.invoke(
+            {
+                "repo_url": repo_url,
+                "pdf_path": pdf_path,
+                "rubric_dimensions": rubric_dimensions,
             },
-        },
-    )
-    evidences = state.get("evidences") or {}
-    final_report = state.get("final_report")
-    if isinstance(final_report, AuditReport):
-        final_report = final_report.model_dump()
-    overall = None
-    if isinstance(final_report, dict):
-        overall = final_report.get("overall_score")
-    return RunResponse(
-        evidences=serialize_evidences(evidences),
-        final_report=final_report if isinstance(final_report, dict) else None,
-        overall_score=overall,
+            config={
+                "run_name": "Automaton Auditor",
+                "tags": ["audit", "api", "sync"],
+                "metadata": {"repo_url": (repo_url or "")[:80], "has_pdf": bool(pdf_path)},
+            },
+        )
+        evidences = state.get("evidences") or {}
+        final_report = state.get("final_report")
+        if isinstance(final_report, AuditReport):
+            final_report = final_report.model_dump()
+        overall = None
+        if isinstance(final_report, dict):
+            overall = final_report.get("overall_score")
+        return RunResponse(
+            evidences=serialize_evidences(evidences),
+            final_report=final_report if isinstance(final_report, dict) else None,
+            overall_score=overall,
+        )
+
+    run_id = submit_run(repo_url, pdf_path, rubric_dimensions)
+    return RunSubmittedResponse(run_id=run_id)
+
+
+@app.get("/api/run/{run_id}", response_model=RunStatusResponse)
+def get_run_status_result(run_id: str):
+    """Return status and result for an async run. status: pending | running | completed | failed."""
+    record = get_run(run_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    result = None
+    if record.get("result"):
+        r = record["result"]
+        result = RunResponse(
+            evidences=r.get("evidences"),
+            final_report=r.get("final_report"),
+            overall_score=r.get("overall_score"),
+        )
+    return RunStatusResponse(
+        run_id=run_id,
+        status=record["status"],
+        result=result,
+        error=record.get("error"),
     )
 
 

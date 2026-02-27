@@ -8,6 +8,7 @@ from typing import Any, Literal
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.llm import get_judge_llm, get_judge_llm_google, get_judge_llm_groq
+from src.config import get_judge_workers
 from src.rubric_loader import get_synthesis_rules
 from src.state import Evidence, JudicialOpinion
 
@@ -210,7 +211,7 @@ def TechLeadNode(state: dict[str, Any]) -> dict[str, Any]:
 
 def JudicialPanelNode(state: dict[str, Any]) -> dict[str, Any]:
     """Run Prosecutor, Defense, TechLead in parallel and merge opinions."""
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    with ThreadPoolExecutor(max_workers=get_judge_workers()) as executor:
         fut_p = executor.submit(ProsecutorNode, state)
         fut_d = executor.submit(DefenseNode, state)
         fut_t = executor.submit(TechLeadNode, state)
