@@ -55,7 +55,7 @@ Detectives **do not opinionate**. They only collect facts based on strict forens
 
 ### 3.3 VisionInspector (Diagram Detective) — Target: Extracted Images
 
-**Tools:** image_analysis (e.g. Gemini Pro Vision / GPT-4o).
+**Tools:** image_analysis using **Google Gemini 1.5 Flash** (vision). See [multi-model-stack-spec.md](multi-model-stack-spec.md).
 
 | Evidence Class | Instruction | Success Pattern | Failure Pattern | Capture |
 |----------------|-------------|------------------|-----------------|---------|
@@ -177,5 +177,6 @@ Report is a **file**, not console print. Structure: **Executive Summary → Crit
 
 - **Master spec:** [spec.md](spec.md)
 - **Technical implementation:** [technical-spec.md](technical-spec.md)
+- **Multi-model stack:** [multi-model-stack-spec.md](multi-model-stack-spec.md)
 - **Phase specs:** [phase1-production-environment/](phase1-production-environment/spec.md), [phase2-detective-layer/](phase2-detective-layer/spec.md), [phase3-judicial-layer/](phase3-judicial-layer/spec.md), [phase4-supreme-court-and-feedback-loop/](phase4-supreme-court-and-feedback-loop/spec.md)
 - **Challenge document:** `TRP1 Challenge Week 2_ The Automaton Auditor.md`
