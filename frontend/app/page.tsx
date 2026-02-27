@@ -198,31 +198,6 @@ export default function Home() {
     }
   };
 
-  function EvidenceBlock({ evidences, emptyMsg }: { evidences: Evidences | null; emptyMsg?: string }) {
-    if (!evidences || Object.keys(evidences).length === 0)
-      return <p className="text-sm text-slate-500">{emptyMsg ?? "No evidence returned."}</p>;
-    return (
-      <div className="space-y-3">
-        {Object.entries(evidences).map(([dimId, items]) => (
-          <div key={dimId} className="rounded-lg border border-slate-700/40 bg-slate-900/40 p-3">
-            <h4 className="mb-1 font-medium capitalize text-amber-200/90">{dimId.replace(/_/g, " ")}</h4>
-            <ul className="space-y-1 text-sm">
-              {items.map((ev, i) => (
-                <li key={i}>
-                  <span className={ev.found ? "text-emerald-400" : "text-slate-500"}>
-                    {ev.found ? "Found" : "Not found"}
-                  </span>
-                  {" · "}{ev.goal}
-                  {ev.rationale && <p className="mt-0.5 text-slate-400">{ev.rationale}</p>}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
   function ReportBlock({ report }: { report: FinalReport }) {
     const score = report.overall_score ?? 0;
     const criteria = report.criteria ?? [];
@@ -329,10 +304,9 @@ export default function Home() {
             >
               {repoLoading ? "Running…" : "Run repo audit"}
             </button>
-            <div className="mt-6">
-              <h3 className="mb-2 text-sm font-medium text-slate-400">Result</h3>
-              <EvidenceBlock evidences={repoEvidences} />
-            </div>
+            {!repoLoading && repoEvidences !== null && (
+              <p className="mt-4 text-sm text-emerald-400">Audit completed.</p>
+            )}
           </section>
         )}
 
@@ -359,10 +333,9 @@ export default function Home() {
             >
               {docLoading ? "Running…" : "Run document audit"}
             </button>
-            <div className="mt-6">
-              <h3 className="mb-2 text-sm font-medium text-slate-400">Result</h3>
-              <EvidenceBlock evidences={docEvidences} />
-            </div>
+            {!docLoading && docEvidences !== null && (
+              <p className="mt-4 text-sm text-emerald-400">Audit completed.</p>
+            )}
           </section>
         )}
 
@@ -373,35 +346,27 @@ export default function Home() {
               Repo and document together; one run uses rubric.json and merges evidences from all detectives.
             </p>
             <div className="grid gap-8 md:grid-cols-2">
-              <div className="min-h-[320px] rounded-xl border border-slate-700/50 bg-slate-900/30 p-5">
+              <div className="rounded-xl border border-slate-700/50 bg-slate-900/30 p-5">
                 <h3 className="mb-3 text-sm font-medium text-amber-200/90">Repo</h3>
-                <div className="mb-3">
-                  <label className="mb-1 block text-xs text-slate-500">Repository URL</label>
-                  <input
-                    type="text"
-                    value={parallelRepoUrl}
-                    onChange={(e) => setParallelRepoUrl(e.target.value)}
-                    placeholder="https://github.com/owner/repo"
-                    className="w-full rounded-lg border border-slate-600 bg-slate-900/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-amber-500/50 focus:outline-none"
-                  />
-                </div>
-                <h4 className="mb-2 mt-4 text-xs font-medium text-slate-400">Repo result</h4>
-                <EvidenceBlock evidences={parallelRepoEvidences} emptyMsg="Run both to see repo evidences." />
+                <label className="mb-1 block text-xs text-slate-500">Repository URL</label>
+                <input
+                  type="text"
+                  value={parallelRepoUrl}
+                  onChange={(e) => setParallelRepoUrl(e.target.value)}
+                  placeholder="https://github.com/owner/repo"
+                  className="w-full rounded-lg border border-slate-600 bg-slate-900/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-amber-500/50 focus:outline-none"
+                />
               </div>
-              <div className="min-h-[320px] rounded-xl border border-slate-700/50 bg-slate-900/30 p-5">
+              <div className="rounded-xl border border-slate-700/50 bg-slate-900/30 p-5">
                 <h3 className="mb-3 text-sm font-medium text-amber-200/90">Document</h3>
-                <div className="mb-3">
-                  <label className="mb-1 block text-xs text-slate-500">Document URL or path</label>
-                  <input
-                    type="text"
-                    value={parallelDocUrl}
-                    onChange={(e) => setParallelDocUrl(e.target.value)}
-                    placeholder="https://example.com/report.pdf"
-                    className="w-full rounded-lg border border-slate-600 bg-slate-900/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-amber-500/50 focus:outline-none"
-                  />
-                </div>
-                <h4 className="mb-2 mt-4 text-xs font-medium text-slate-400">Document result</h4>
-                <EvidenceBlock evidences={parallelDocEvidences} emptyMsg="Run both to see document evidences." />
+                <label className="mb-1 block text-xs text-slate-500">Document URL or path</label>
+                <input
+                  type="text"
+                  value={parallelDocUrl}
+                  onChange={(e) => setParallelDocUrl(e.target.value)}
+                  placeholder="https://example.com/report.pdf"
+                  className="w-full rounded-lg border border-slate-600 bg-slate-900/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-amber-500/50 focus:outline-none"
+                />
               </div>
             </div>
             {parallelError && <p className="mt-4 text-sm text-red-300">{parallelError}</p>}
@@ -413,6 +378,9 @@ export default function Home() {
             >
               {parallelLoading ? "Running…" : "Run repo + document together"}
             </button>
+            {!parallelLoading && (parallelRepoEvidences !== null || parallelDocEvidences !== null) && (
+              <p className="mt-4 text-sm text-emerald-400">Audit completed.</p>
+            )}
           </section>
         )}
 
