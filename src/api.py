@@ -107,11 +107,21 @@ def run_audit(req: RunRequest) -> RunResponse:
             detail="No rubric dimensions (rubric.json missing or empty)",
         )
     graph = build_detective_graph()
-    state = graph.invoke({
-        "repo_url": repo_url,
-        "pdf_path": pdf_path,
-        "rubric_dimensions": rubric_dimensions,
-    })
+    state = graph.invoke(
+        {
+            "repo_url": repo_url,
+            "pdf_path": pdf_path,
+            "rubric_dimensions": rubric_dimensions,
+        },
+        config={
+            "run_name": "Automaton Auditor",
+            "tags": ["audit", "api"],
+            "metadata": {
+                "repo_url": (repo_url or "")[:80],
+                "has_pdf": bool(pdf_path),
+            },
+        },
+    )
     evidences = state.get("evidences") or {}
     final_report = state.get("final_report")
     if isinstance(final_report, AuditReport):

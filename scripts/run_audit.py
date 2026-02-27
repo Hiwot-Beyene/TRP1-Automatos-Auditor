@@ -41,12 +41,23 @@ def main():
     from src.graph import build_detective_graph
 
     graph = build_detective_graph()
-    state = graph.invoke({
-        "repo_url": repo_url,
-        "pdf_path": pdf_path,
-        "rubric_dimensions": dimensions,
-        "audit_output_dir": str(audit_dir),
-    })
+    state = graph.invoke(
+        {
+            "repo_url": repo_url,
+            "pdf_path": pdf_path,
+            "rubric_dimensions": dimensions,
+            "audit_output_dir": str(audit_dir),
+        },
+        config={
+            "run_name": "Automaton Auditor",
+            "tags": ["audit", "cli", args.mode],
+            "metadata": {
+                "repo_url": (repo_url or "")[:80],
+                "has_pdf": bool(pdf_path),
+                "mode": args.mode,
+            },
+        },
+    )
     evidences = state.get("evidences") or {}
     final_report = state.get("final_report")
 
