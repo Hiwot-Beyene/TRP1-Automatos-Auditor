@@ -15,7 +15,7 @@
 
 - **[functional-spec.md](functional-spec.md)** — *What* the system does: inputs/outputs, Protocol A (Forensic Evidence), Protocol B (Judicial Sentencing), synthesis rules, report structure, Tenx rubric.
 - **[technical-spec.md](technical-spec.md)** — *How* it is built: state schema, file layout, tool contracts, graph topology, rubric JSON, implementation phases, security.
-- **[multi-model-stack-spec.md](multi-model-stack-spec.md)** — *Which* model powers which node: Groq (configurable judge model; default llama-3.3-70b-versatile; optional Gemini fallback), Gemini (DocAnalyst + VisionInspector; optional Judges), LangSmith (observability). Free-tier only; use for speckit.analyse and TDD.
+- **[multi-model-stack-spec.md](multi-model-stack-spec.md)** — *Which* model powers which node: **Ollama (Llama 3.2, local default)** for Judges and optional RepoInvestigator; Groq/Gemini optional for judges; Gemini for DocAnalyst + VisionInspector; LangSmith (observability). Use for speckit.analyse and TDD.
 
 ## User Scenarios & Testing
 
@@ -35,7 +35,7 @@ LangSmith tracing; .env.example documents keys; uv sync installs and runs graph.
 
 ## Folder Structure & File Paths
 
-**Source:** src/state.py, src/tools/repo_tools.py, src/tools/doc_tools.py, src/nodes/detectives.py, src/nodes/judges.py, src/nodes/justice.py, src/graph.py  
+**Source:** src/state.py, src/llm.py, src/config.py, src/run_store.py, src/tools/repo_tools.py, src/tools/doc_tools.py, src/nodes/detectives.py, src/nodes/judges.py, src/nodes/justice.py, src/nodes/supreme_court.py (optional), src/graph.py, src/api.py  
 **Config:** pyproject.toml, .env.example, rubric.json  
 **Documentation:** README.md, reports/interim_report.pdf, reports/final_report.pdf  
 **Audit output:** audit/report_onself_generated/, audit/report_onpeer_generated/, audit/report_bypeer_received/  
@@ -77,4 +77,4 @@ FR-001–FR-012 and key entities are in [functional-spec.md](functional-spec.md)
 
 ## Assumptions
 
-Python 3.10+; uv; LangSmith; rubric.json 10 dimensions. **Multi-model stack:** free-tier only — Groq (default judge model llama-3.3-70b-versatile; configurable via GROQ_JUDGE_MODEL; optional Gemini for judges when JUDGE_PROVIDER=google or on 429/400 fallback) for RepoInvestigator optional LLM and Judges; Google Gemini (1.5 / 2.0 Flash) for DocAnalyst and VisionInspector; LangSmith for observability. VisionInspector implementation and execution required for final deliverable. Peer-gradable repo. Full behavior in [functional-spec.md](functional-spec.md); full technical detail in [technical-spec.md](technical-spec.md); model assignment in [multi-model-stack-spec.md](multi-model-stack-spec.md).
+Python 3.10+; uv; LangSmith; rubric.json 10 dimensions. **Multi-model stack:** **Ollama (Llama 3.2, local)** as default for Judges and optional RepoInvestigator (no API key); Groq/Gemini optional for judges when JUDGE_PROVIDER=groq or google. Google Gemini (1.5 / 2.0 Flash) for DocAnalyst and VisionInspector; LangSmith for observability. **Scalability:** Configurable workers (AUDITOR_DETECTIVE_WORKERS, AUDITOR_JUDGE_WORKERS), max concurrent runs (AUDITOR_MAX_CONCURRENT_RUNS), async API (POST /api/run?wait=false, GET /api/run/{run_id}). VisionInspector implementation and execution required for final deliverable. Peer-gradable repo. Full behavior in [functional-spec.md](functional-spec.md); full technical detail in [technical-spec.md](technical-spec.md); model assignment in [multi-model-stack-spec.md](multi-model-stack-spec.md).

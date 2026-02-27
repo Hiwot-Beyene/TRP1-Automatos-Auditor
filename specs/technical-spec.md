@@ -13,13 +13,13 @@ The system uses a **free-tier multi-model stack**. Which LLM powers which node i
 
 | Node(s) | Model / Service |
 |---------|-----------------|
-| RepoInvestigator (optional LLM) | Groq (configurable; e.g. Llama 3.1 8B) |
-| Prosecutor, Defense, TechLead | Groq (default model configurable; default llama-3.3-70b-versatile) or Gemini when JUDGE_PROVIDER=google or on 429/400 fallback |
+| RepoInvestigator (optional LLM) | Ollama (when JUDGE_PROVIDER=ollama) or Groq (configurable) |
+| Prosecutor, Defense, TechLead | **Ollama — Llama 3.2** (default, local) or Groq or Gemini when JUDGE_PROVIDER=groq or google |
 | DocAnalyst, VisionInspector | Google Gemini 1.5 / 2.0 Flash |
 | Chief Justice | No LLM (deterministic only) |
 | Observability | LangSmith |
 
-No OpenAI (or other paid) API is required for the default stack. Env vars: `GROQ_API_KEY`, `GROQ_JUDGE_MODEL`, `JUDGE_PROVIDER`, `GOOGLE_API_KEY`, `GOOGLE_GEMINI_MODEL`, `LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY` (see multi-model-stack-spec and .env.example).
+Default stack: Ollama (local) for Judges; Gemini for Doc/Vision. Env: `JUDGE_PROVIDER`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `GROQ_API_KEY`, `GROQ_JUDGE_MODEL`, `GOOGLE_API_KEY`, `GOOGLE_GEMINI_MODEL`, `LANGCHAIN_*` (see multi-model-stack-spec and .env.example).
 
 ---
 
@@ -100,13 +100,13 @@ AgentState (TypedDict)
 
 ## 3. File and Folder Layout
 
-See phase specs for phase-specific files. Full layout: src/state.py, src/tools/repo_tools.py, src/tools/doc_tools.py, src/nodes/detectives.py, src/nodes/judges.py, src/nodes/justice.py, src/graph.py; pyproject.toml, .env.example, rubric.json (repo root); README.md, reports/, audit/. Explicit run command: `uv run python scripts/run_audit.py <repo_url> [pdf_path]`; rubric loaded from rubric.json (no user-supplied rubric in UI).
+See phase specs for phase-specific files. Full layout: src/state.py, src/llm.py, src/config.py, src/run_store.py, src/tools/repo_tools.py, src/tools/doc_tools.py, src/nodes/detectives.py, src/nodes/judges.py, src/nodes/justice.py, src/nodes/supreme_court.py (optional), src/graph.py, src/api.py; pyproject.toml, .env.example, rubric.json (repo root); README.md, reports/, audit/. Explicit run command: `uv run python scripts/run_audit.py <repo_url> [pdf_path]`; rubric loaded from rubric.json (no user-supplied rubric in UI). **Scalability:** Configurable workers via `AUDITOR_DETECTIVE_WORKERS`, `AUDITOR_JUDGE_WORKERS`; rate limit via `AUDITOR_MAX_CONCURRENT_RUNS`; async runs via POST /api/run?wait=false and GET /api/run/{run_id} (see run_store).
 
 ---
 
 ## 4. Tool Contracts
 
-RepoInvestigator: sandboxed clone (tempfile, subprocess.run with timeout and capture_output), extract_git_history(path), analyze_graph_structure(path) using AST (edges, decorators, inheritance; add_edge, add_conditional_edges, StateGraph, BaseModel, TypedDict, reducers); precise RepoCloneError for bad URL and auth failures. Optional LLM (Groq, model configurable) for interpretation/summary per [multi-model-stack-spec.md](multi-model-stack-spec.md). DocAnalyst: ingest_pdf(path), RAG-lite; LLM for query/theoretical depth MUST use Gemini 1.5 / 2.0 Flash. VisionInspector: extract_images_from_pdf(path); vision analysis MUST use Gemini 1.5 / 2.0 Flash (vision); implementation and execution required for final deliverable.
+RepoInvestigator: sandboxed clone (tempfile, subprocess.run with timeout and capture_output), extract_git_history(path), analyze_graph_structure(path) using AST (edges, decorators, inheritance; add_edge, add_conditional_edges, StateGraph, BaseModel, TypedDict, reducers); precise RepoCloneError for bad URL and auth failures. Optional LLM: **Ollama** (when JUDGE_PROVIDER=ollama, e.g. llama3.2) or **Groq** (when JUDGE_PROVIDER=groq) per [multi-model-stack-spec.md](multi-model-stack-spec.md). DocAnalyst: ingest_pdf(path), RAG-lite; LLM for query/theoretical depth MUST use Gemini 1.5 / 2.0 Flash. VisionInspector: extract_images_from_pdf(path); vision analysis MUST use Gemini 1.5 / 2.0 Flash (vision); implementation and execution required for final deliverable.
 
 ---
 
@@ -118,7 +118,7 @@ START → [RepoInvestigator || DocAnalyst || VisionInspector] → EvidenceAggreg
 
 ## 6–7. Judicial and Chief Justice Requirements
 
-Judges: use Groq with configurable model (default llama-3.3-70b-versatile) or Gemini when JUDGE_PROVIDER=google or on Groq 429/400; see [multi-model-stack-spec.md](multi-model-stack-spec.md). `.with_structured_output(JudicialOpinion)` with JSON-only fallback on 400; distinct personas; retry on free text. ChiefJustice: hardcoded rules only; AuditReport → Markdown file.
+Judges: use **Ollama (Llama 3.2)** by default (local; no API key), or Groq/Gemini when JUDGE_PROVIDER=groq or google; see [multi-model-stack-spec.md](multi-model-stack-spec.md). LLM clients centralized in src/llm.py. `.with_structured_output(JudicialOpinion)` with JSON-only fallback on 400; distinct personas; retry on free text. ChiefJustice: hardcoded rules only; AuditReport → Markdown file. Optional alternative: src/nodes/supreme_court.py (chief_justice_node, generate_markdown_report).
 
 ---
 
@@ -138,6 +138,12 @@ rubric_metadata, dimensions (id, name, target_artifact, forensic_instruction, su
 | Phase 4: Supreme Court & Feedback Loop | [phase4-supreme-court-and-feedback-loop/](phase4-supreme-court-and-feedback-loop/spec.md) |
 
 **Git branch and commit approach:** See [spec.md](spec.md) and each phase folder for branch names and atomic commits. Merge order: Phase 1 → Phase 2 → Phase 3 → Phase 4.
+
+### 9.1 Scalability
+
+- **Configurable workers:** `AUDITOR_DETECTIVE_WORKERS`, `AUDITOR_JUDGE_WORKERS` (default 3 each) control in-run parallelism; `AUDITOR_MAX_CONCURRENT_RUNS` (default 2) caps concurrent graph runs to avoid bursting LLM APIs.
+- **Async API:** POST /api/run with `?wait=false` returns `run_id`; GET /api/run/{run_id} returns status (pending | running | completed | failed) and result when completed. In-memory run store (src/run_store.py); optional persistence for multi-replica later.
+- **Default sync:** POST /api/run with `?wait=true` (default) blocks and returns result for backward compatibility.
 
 ---
 
