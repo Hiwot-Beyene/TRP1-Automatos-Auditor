@@ -1,7 +1,6 @@
 """FastAPI backend: POST /api/run with rubric from rubric.json; GET /api/rubric."""
 
-import json
-from pathlib import Path
+import re
 
 from dotenv import load_dotenv
 
@@ -13,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from src.graph import build_detective_graph
 from src.parallelism_checks import run_parallelism_checks
+from src.rubric_loader import get_dimensions, get_rubric
 from src.state import AuditReport, Evidence
 
 app = FastAPI(title="Automaton Auditor API", version="0.1.0")
@@ -24,28 +24,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-RUBRIC_PATH = Path(__file__).resolve().parent.parent / "rubric.json"
+REPO_TO_PDF_PATH = "reports/final_report.pdf"
+_GITHUB_REPO_RE = re.compile(
+    r"(?:https?://(?:www\.)?github\.com/|git@github\.com:)([^/]+)/([^/#?\s]+?)(?:\.git)?/?$"
+)
 
 
-def _find_rubric_path() -> Path:
-    if RUBRIC_PATH.is_file():
-        return RUBRIC_PATH
-    cwd_path = Path.cwd() / "rubric.json"
-    if cwd_path.is_file():
-        return cwd_path
-    return RUBRIC_PATH
-
-
-def load_rubric_dimensions():
-    """Load dimensions from rubric.json (documentation-defined constitution)."""
-    path = _find_rubric_path()
-    if not path.is_file():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return data.get("dimensions", [])
-    except (json.JSONDecodeError, OSError):
-        return []
+def default_pdf_url_from_repo(repo_url: str) -> str:
+    """Derive raw GitHub PDF URL from repo (reports/final_report.pdf on main). Challenge: report committed to repo."""
+    s = (repo_url or "").strip()
+    m = _GITHUB_REPO_RE.search(s)
+    if not m:
+        return ""
+    owner, repo = m.group(1), m.group(2)
+    return f"https://raw.githubusercontent.com/{owner}/{repo}/main/{REPO_TO_PDF_PATH}"
 
 
 class RunRequest(BaseModel):
@@ -79,15 +71,15 @@ def serialize_evidences(evidences: dict[str, list[Evidence]]) -> dict[str, list[
 
 
 @app.get("/api/rubric")
-def get_rubric():
-    """Return the machine-readable rubric from rubric.json (dimensions + synthesis_rules)."""
-    path = _find_rubric_path()
-    if not path.is_file():
-        return {"dimensions": [], "synthesis_rules": {}}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {"dimensions": [], "synthesis_rules": {}}
+def api_get_rubric():
+    """Return the machine-readable rubric from rubric.json (dimensions + synthesis_rules). Cached."""
+    return get_rubric()
+
+
+@app.get("/api/default-pdf-url")
+def get_default_pdf_url(repo_url: str = "") -> dict:
+    """Return default PDF URL for a GitHub repo (reports/final_report.pdf). Per challenge: report committed to repo."""
+    return {"pdf_url": default_pdf_url_from_repo(repo_url)}
 
 
 @app.post("/api/run", response_model=RunResponse)
@@ -97,7 +89,18 @@ def run_audit(req: RunRequest) -> RunResponse:
             status_code=400,
             detail="Provide at least one of repo_url or pdf_path",
         )
-    rubric_dimensions = req.rubric_dimensions if req.rubric_dimensions is not None else load_rubric_dimensions()
+    pdf_path = req.pdf_path.strip()
+    repo_url = req.repo_url.strip()
+    if repo_url and not pdf_path:
+        default_url = default_pdf_url_from_repo(repo_url)
+        if default_url:
+            try:
+                from src.tools.doc_tools import pdf_url_reachable
+                if pdf_url_reachable(default_url):
+                    pdf_path = default_url
+            except Exception:
+                pass
+    rubric_dimensions = req.rubric_dimensions if req.rubric_dimensions is not None else get_dimensions()
     if not rubric_dimensions:
         raise HTTPException(
             status_code=500,
@@ -105,8 +108,8 @@ def run_audit(req: RunRequest) -> RunResponse:
         )
     graph = build_detective_graph()
     state = graph.invoke({
-        "repo_url": req.repo_url.strip(),
-        "pdf_path": req.pdf_path.strip(),
+        "repo_url": repo_url,
+        "pdf_path": pdf_path,
         "rubric_dimensions": rubric_dimensions,
     })
     evidences = state.get("evidences") or {}

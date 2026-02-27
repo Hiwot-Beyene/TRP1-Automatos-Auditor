@@ -1,25 +1,16 @@
 """ChiefJusticeNode: hardcoded deterministic synthesis. Produces AuditReport and Markdown."""
 
-import json
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from src.rubric_loader import get_rubric
 from src.state import AuditReport, CriterionResult, Evidence, JudicialOpinion
 
 
-RUBRIC_PATH = Path(__file__).resolve().parent.parent.parent / "rubric.json"
-
-
 def _load_rubric():
-    for p in (RUBRIC_PATH, Path.cwd() / "rubric.json"):
-        if p.is_file():
-            try:
-                return json.loads(p.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                pass
-    return {"dimensions": [], "synthesis_rules": {}}
+    return get_rubric()
 
 
 def _group_opinions_by_criterion(opinions: list[Any]) -> dict[str, list[JudicialOpinion]]:
@@ -265,11 +256,13 @@ def ChiefJusticeNode(state: dict[str, Any]) -> dict[str, Any]:
             ))
 
     overall = sum(c.final_score for c in criteria) / len(criteria) if criteria else 0.0
+    overall_100 = round(overall * 20.0, 1)
     report = AuditReport(
         repo_url=state.get("repo_url") or "",
         pdf_path=state.get("pdf_path") or "",
         executive_summary=_build_executive_summary(state, criteria, overall),
         overall_score=overall,
+        overall_score_100=overall_100,
         criteria=criteria,
         remediation_plan=_build_remediation_plan(criteria),
     )
@@ -305,7 +298,7 @@ def _report_to_markdown(r: AuditReport) -> str:
     if pdf_display:
         lines.append("**Document (PDF):** " + pdf_display)
     lines.extend([
-        f"**Overall Score (Verdict):** {r.overall_score:.2f}/5 — {verdict_label} (threshold {target}/5).",
+        f"**Overall Score (Verdict):** {r.overall_score:.2f}/5 ({r.overall_score_100:.1f}/100) — {verdict_label} (threshold {target}/5).",
         "",
         "---",
         "",

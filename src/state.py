@@ -37,6 +37,7 @@ class AuditReport(BaseModel):
     pdf_path: str = ""
     executive_summary: str = ""
     overall_score: float = 0.0
+    overall_score_100: float = Field(default=0.0, description="Overall score scaled to 0-100 (overall_score * 20)")
     criteria: list[CriterionResult] = Field(default_factory=list)
     remediation_plan: str = ""
 

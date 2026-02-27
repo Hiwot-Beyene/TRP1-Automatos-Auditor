@@ -31,6 +31,7 @@ type FinalReport = {
   repo_url?: string;
   executive_summary?: string;
   overall_score?: number;
+  overall_score_100?: number;
   criteria?: CriterionResult[];
   remediation_plan?: string;
 };
@@ -165,9 +166,8 @@ export default function Home() {
 
   const runParallelAudit = async () => {
     const repo = parallelRepoUrl.trim();
-    const doc = parallelDocUrl.trim();
-    if (!repo || !doc) {
-      setParallelError("Enter both repository URL and document URL.");
+    if (!repo) {
+      setParallelError("Enter repository URL.");
       return;
     }
     if (!rubricDimensions.length) {
@@ -182,7 +182,7 @@ export default function Home() {
       const res = await fetch(`${API_URL}/api/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repo_url: repo, pdf_path: doc }),
+        body: JSON.stringify({ repo_url: repo, pdf_path: parallelDocUrl.trim() }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || res.statusText || "Request failed");
@@ -200,6 +200,7 @@ export default function Home() {
 
   function ReportBlock({ report }: { report: FinalReport }) {
     const score = report.overall_score ?? 0;
+    const score100 = report.overall_score_100 ?? Math.round(score * 20);
     const criteria = report.criteria ?? [];
     return (
       <div className="mt-6 rounded-xl border border-amber-500/30 bg-slate-900/50 p-6">
@@ -207,6 +208,7 @@ export default function Home() {
         <div className="mb-4 flex items-baseline gap-2">
           <span className="text-3xl font-light text-white">{score.toFixed(1)}</span>
           <span className="text-slate-400">/ 5</span>
+          <span className="text-slate-500">({score100}/100)</span>
         </div>
         {report.executive_summary && (
           <p className="mb-4 text-sm text-slate-300">{report.executive_summary}</p>
@@ -248,7 +250,7 @@ export default function Home() {
   const tabs: { id: Tab; label: string }[] = [
     { id: "repository", label: "Repository" },
     { id: "document", label: "Document" },
-    { id: "parallelism", label: "Parallelism" },
+    { id: "parallelism", label: "Full audit" },
   ];
 
   return (
@@ -283,8 +285,8 @@ export default function Home() {
 
         {activeTab === "repository" && (
           <section className="rounded-2xl border border-slate-700/50 bg-slate-800/30 p-8 shadow-xl backdrop-blur">
-            <h2 className="mb-4 heading-font text-xl font-light text-slate-200">Repository</h2>
-            <p className="mb-4 text-sm text-slate-500">Repository URL. Rubric is loaded from rubric.json (no user input).</p>
+            <h2 className="mb-4 heading-font text-xl font-light text-slate-200">Repository only</h2>
+            <p className="mb-4 text-sm text-slate-500">Repository URL. Report PDF is taken from repo (reports/final_report.pdf on main) when available.</p>
             <div className="mb-4">
               <label className="mb-1 block text-sm text-slate-400">Repository URL</label>
               <input
@@ -312,8 +314,8 @@ export default function Home() {
 
         {activeTab === "document" && (
           <section className="rounded-2xl border border-slate-700/50 bg-slate-800/30 p-8 shadow-xl backdrop-blur">
-            <h2 className="mb-4 heading-font text-xl font-light text-slate-200">Document</h2>
-            <p className="mb-4 text-sm text-slate-500">Document (PDF) path or URL. Rubric from rubric.json.</p>
+            <h2 className="mb-4 heading-font text-xl font-light text-slate-200">Document only</h2>
+            <p className="mb-4 text-sm text-slate-500">PDF report URL or path (no repo). For full audit with repo, use the Full audit tab.</p>
             <div className="mb-4">
               <label className="mb-1 block text-sm text-slate-400">Document URL or path (PDF)</label>
               <input
@@ -341,14 +343,14 @@ export default function Home() {
 
         {activeTab === "parallelism" && (
           <section className="rounded-2xl border border-slate-700/50 bg-slate-800/30 p-8 shadow-xl backdrop-blur">
-            <h2 className="mb-4 heading-font text-xl font-light text-slate-200">Parallelism</h2>
+            <h2 className="mb-4 heading-font text-xl font-light text-slate-200">Full audit (repo + report)</h2>
             <p className="mb-6 text-sm text-slate-500">
-              Repo and document together; one run uses rubric.json and merges evidences from all detectives.
+              Per challenge: provide a GitHub repository URL and optionally a link to the PDF report. The report may be committed to the repo (e.g. reports/final_report.pdf) — use the button below to fill the default.
             </p>
             <div className="grid gap-8 md:grid-cols-2">
               <div className="rounded-xl border border-slate-700/50 bg-slate-900/30 p-5">
-                <h3 className="mb-3 text-sm font-medium text-amber-200/90">Repo</h3>
-                <label className="mb-1 block text-xs text-slate-500">Repository URL</label>
+                <h3 className="mb-3 text-sm font-medium text-amber-200/90">Repository URL (required)</h3>
+                <label className="mb-1 block text-xs text-slate-500">GitHub repository URL</label>
                 <input
                   type="text"
                   value={parallelRepoUrl}
@@ -358,15 +360,40 @@ export default function Home() {
                 />
               </div>
               <div className="rounded-xl border border-slate-700/50 bg-slate-900/30 p-5">
-                <h3 className="mb-3 text-sm font-medium text-amber-200/90">Document</h3>
-                <label className="mb-1 block text-xs text-slate-500">Document URL or path</label>
-                <input
-                  type="text"
-                  value={parallelDocUrl}
-                  onChange={(e) => setParallelDocUrl(e.target.value)}
-                  placeholder="https://example.com/report.pdf"
-                  className="w-full rounded-lg border border-slate-600 bg-slate-900/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-amber-500/50 focus:outline-none"
-                />
+                <h3 className="mb-3 text-sm font-medium text-amber-200/90">PDF report (optional)</h3>
+                <label className="mb-1 block text-xs text-slate-500">Link to PDF or leave empty to use report from repo</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={parallelDocUrl}
+                    onChange={(e) => setParallelDocUrl(e.target.value)}
+                    placeholder="https://raw.githubusercontent.com/.../reports/final_report.pdf"
+                    className="flex-1 rounded-lg border border-slate-600 bg-slate-900/50 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-amber-500/50 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const repo = parallelRepoUrl.trim();
+                      if (!repo) {
+                        setParallelError("Enter repository URL first.");
+                        return;
+                      }
+                      setParallelError(null);
+                      try {
+                        const res = await fetch(`${API_URL}/api/default-pdf-url?repo_url=${encodeURIComponent(repo)}`);
+                        const data = await res.json().catch(() => ({}));
+                        const url = data.pdf_url || "";
+                        if (url) setParallelDocUrl(url);
+                        else setParallelError("Could not derive PDF URL for this repo.");
+                      } catch {
+                        setParallelError("Failed to get default PDF URL.");
+                      }
+                    }}
+                    className="shrink-0 rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-600"
+                  >
+                    Use report from repo
+                  </button>
+                </div>
               </div>
             </div>
             {parallelError && <p className="mt-4 text-sm text-red-300">{parallelError}</p>}
@@ -376,8 +403,9 @@ export default function Home() {
               disabled={parallelLoading || !rubricDimensions.length}
               className="mt-6 w-full rounded-lg bg-amber-600 py-3 text-sm font-medium text-slate-950 hover:bg-amber-500 disabled:opacity-50"
             >
-              {parallelLoading ? "Running…" : "Run repo + document together"}
+              {parallelLoading ? "Running…" : "Run full audit (repo + report)"}
             </button>
+            <p className="mt-2 text-xs text-slate-500">If PDF is left empty, the backend uses reports/final_report.pdf from the repo (main branch).</p>
             {!parallelLoading && (parallelRepoEvidences !== null || parallelDocEvidences !== null) && (
               <p className="mt-4 text-sm text-emerald-400">Audit completed.</p>
             )}

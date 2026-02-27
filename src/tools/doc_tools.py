@@ -6,6 +6,7 @@ import re
 import tempfile
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from pypdf import PdfReader
@@ -41,6 +42,24 @@ def _is_pdf_bytes(data: bytes) -> bool:
     return len(data) >= 4 and data[:4] == PDF_MAGIC
 
 
+def pdf_url_reachable(url: str, timeout: int = 10) -> bool:
+    """Return True if URL returns 200 and body looks like PDF (magic bytes). Handles 404, timeouts, redirects."""
+    s = (url or "").strip()
+    if not s.startswith("http://") and not s.startswith("https://"):
+        return False
+    drive_url = _google_drive_download_url(s)
+    u = drive_url or s
+    try:
+        req = Request(u, headers={"User-Agent": "Mozilla/5.0 (compatible; AutomatonAuditor/1.0)"})
+        with urlopen(req, timeout=timeout) as resp:
+            data = resp.read(8)
+        return _is_pdf_bytes(data)
+    except HTTPError as e:
+        return False
+    except (URLError, OSError, TimeoutError):
+        return False
+
+
 def pdf_to_binary(pdf_path: str) -> bytes:
     """Resolve PDF to binary once: download URL (with Drive handling) or read local file. Use same bytes for ingest and image extraction."""
     s = (pdf_path or "").strip()
@@ -50,8 +69,15 @@ def pdf_to_binary(pdf_path: str) -> bytes:
         if drive_url:
             url = drive_url
         req = Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; AutomatonAuditor/1.0)"})
-        with urlopen(req, timeout=60) as resp:
-            data = resp.read()
+        try:
+            with urlopen(req, timeout=60) as resp:
+                data = resp.read()
+        except HTTPError as e:
+            if e.code == 404:
+                raise DocIngestError(f"PDF not found (404): {pdf_path!r}")
+            raise DocIngestError(f"PDF URL error ({e.code}): {str(e)[:150]}")
+        except (URLError, OSError, TimeoutError) as e:
+            raise DocIngestError(f"PDF unreachable: {str(e)[:150]}")
         if not _is_pdf_bytes(data):
             if b"confirm=" in data or b"virus scan" in data.lower():
                 confirm = re.search(rb"confirm=([0-9A-Za-z_-]+)", data)
@@ -106,8 +132,9 @@ def ingest_pdf(
     pdf_bytes: bytes | None = None,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     overlap: int = DEFAULT_CHUNK_OVERLAP,
+    max_pages: int = 80,
 ) -> list[dict[str, Any]]:
-    """Parse PDF and return chunked text. Prefer pdf_bytes (binary) when provided so one load is reused."""
+    """Parse PDF and return chunked text. Prefer pdf_bytes (binary) when provided so one load is reused. max_pages caps processing for large PDFs."""
     if pdf_bytes is not None and _is_pdf_bytes(pdf_bytes):
         stream = io.BytesIO(pdf_bytes)
         reader = PdfReader(stream)
@@ -131,7 +158,8 @@ def ingest_pdf(
             raise DocIngestError(f"Cannot parse PDF: {e}") from e
 
     chunks: list[dict[str, Any]] = []
-    for i, page in enumerate(reader.pages):
+    pages = reader.pages[:max_pages] if max_pages else reader.pages
+    for i, page in enumerate(pages):
         try:
             text = page.extract_text() or ""
         except Exception:
