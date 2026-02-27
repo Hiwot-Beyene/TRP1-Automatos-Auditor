@@ -163,6 +163,19 @@ def search_theoretical_depth(chunks: list[dict[str, Any]]) -> dict[str, Any]:
     return result
 
 
+def extract_file_paths_from_text(text: str) -> list[str]:
+    """Extract file-path-like strings (e.g. src/state.py) from text for cross-reference."""
+    import re
+    seen: set[str] = set()
+    out: list[str] = []
+    for m in re.finditer(r"(?:^|[\s`'\"])((?:src|tests|scripts)/[a-zA-Z0-9_/.-]+\.(?:py|json|md|toml)|[a-zA-Z0-9_/.-]+\.(?:py|json|md|toml))(?:[\s`'\"]|$)", text):
+        p = m.group(1).strip("`'\"")
+        if p not in seen and len(p) > 2:
+            seen.add(p)
+            out.append(p)
+    return out
+
+
 def extract_images_from_pdf(pdf_path: str) -> list[dict[str, Any]]:
     """Extract images from PDF. Returns list of {page: int, data: bytes, name: str}. Empty if none or on error."""
     path = Path(pdf_path)
