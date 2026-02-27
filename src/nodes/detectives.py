@@ -104,10 +104,14 @@ def RepoInvestigatorNode(state: dict[str, Any]) -> dict[str, Any]:
             forensic_scan = repo_tools.scan_forensic_evidence(path)
             git_forensic = repo_tools.analyze_git_forensic(history) if history else {}
             llm_rationale: str | None = None
-            if os.environ.get("GROQ_API_KEY") and not os.environ.get("AUDITOR_FAST_REPO"):
+            llm = None
+            try:
+                from src.llm import get_repo_investigator_llm
+                llm = get_repo_investigator_llm()
+            except Exception:
+                pass
+            if llm:
                 try:
-                    from langchain_groq import ChatGroq
-                    llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.2)
                     summary_prompt = f"Summarize in one sentence: repo has {len(history)} commits; graph_analysis: {graph_info.get('has_state_graph')} (nodes: {graph_info.get('nodes', [])})."
                     resp = llm.invoke(summary_prompt)
                     if hasattr(resp, "content") and resp.content:
@@ -269,59 +273,61 @@ def VisionInspectorNode(state: dict[str, Any]) -> dict[str, Any]:
     rationale = "No images extracted from PDF"
     confidence = 0.5
 
-    if images and os.environ.get("GOOGLE_API_KEY"):
+    if images:
         try:
-            from langchain_core.messages import HumanMessage
-            from langchain_google_genai import ChatGoogleGenerativeAI
-
-            model = os.environ.get("GOOGLE_GEMINI_MODEL", "gemini-2.0-flash")
-            llm = ChatGoogleGenerativeAI(model=model)
-            dim = dimensions[0] if dimensions else {}
-            forensic = (dim.get("forensic_instruction") or "").strip()
-            success = (dim.get("success_pattern") or "").strip()[:200]
-            failure = (dim.get("failure_pattern") or "").strip()[:200]
-            prompt = (
-                "Per rubric, classify this diagram from the PDF report. "
-                + (forensic if forensic else "Is it a LangGraph StateGraph diagram with parallel branches, a sequence diagram, or generic flowchart? Does it show START -> [Detectives in parallel] -> Evidence Aggregation -> [Judges in parallel] -> Chief Justice -> END?")
-            )
-            if success:
-                prompt += f" Success: {success}"
-            if failure:
-                prompt += f" Flag as failure: {failure}"
-            prompt += " Reply in 1-2 sentences."
-            descriptions: list[str] = []
-            for idx, img in enumerate(images[:5]):
-                raw = img.get("data") or b""
-                if not raw:
-                    continue
-                ext = (img.get("ext") or "").lower()
-                if ext in ("jpg", "jpeg") or raw[:2] == b"\xff\xd8":
-                    mime = "image/jpeg"
-                else:
-                    mime = "image/png"
-                b64 = base64.b64encode(raw).decode("utf-8")
-                msg = HumanMessage(
-                    content=[
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-                    ]
+            from src.llm import get_vision_llm
+            llm = get_vision_llm()
+        except Exception:
+            llm = None
+        if llm:
+            try:
+                from langchain_core.messages import HumanMessage
+                dim = dimensions[0] if dimensions else {}
+                forensic = (dim.get("forensic_instruction") or "").strip()
+                success = (dim.get("success_pattern") or "").strip()[:200]
+                failure = (dim.get("failure_pattern") or "").strip()[:200]
+                prompt = (
+                    "Per rubric, classify this diagram from the PDF report. "
+                    + (forensic if forensic else "Is it a LangGraph StateGraph diagram with parallel branches, a sequence diagram, or generic flowchart? Does it show START -> [Detectives in parallel] -> Evidence Aggregation -> [Judges in parallel] -> Chief Justice -> END?")
                 )
-                response = llm.invoke([msg])
-                if hasattr(response, "content") and response.content:
-                    descriptions.append(f"[Image {idx+1}]: {response.content.strip()}")
-            if descriptions:
-                content = f"Extracted {len(images)} image(s). Vision: " + " ".join(descriptions)
-                rationale = "; ".join(descriptions)
-                confidence = 0.8
-            else:
-                content = f"Extracted {len(images)} image(s); vision returned no content"
-        except Exception as e:
-            err_msg = str(e).strip()
-            if "RESOURCE_EXHAUSTED" in err_msg or "429" in err_msg or "quota" in err_msg.lower():
-                content = f"Extracted {len(images)} image(s). Vision analysis skipped (API quota exceeded)."
-            else:
-                content = f"Extracted {len(images)} image(s); vision call failed: {err_msg[:120]}"
-            rationale = content
+                if success:
+                    prompt += f" Success: {success}"
+                if failure:
+                    prompt += f" Flag as failure: {failure}"
+                prompt += " Reply in 1-2 sentences."
+                descriptions: list[str] = []
+                for idx, img in enumerate(images[:5]):
+                    raw = img.get("data") or b""
+                    if not raw:
+                        continue
+                    ext = (img.get("ext") or "").lower()
+                    if ext in ("jpg", "jpeg") or raw[:2] == b"\xff\xd8":
+                        mime = "image/jpeg"
+                    else:
+                        mime = "image/png"
+                    b64 = base64.b64encode(raw).decode("utf-8")
+                    msg = HumanMessage(
+                        content=[
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                        ]
+                    )
+                    response = llm.invoke([msg])
+                    if hasattr(response, "content") and response.content:
+                        descriptions.append(f"[Image {idx+1}]: {response.content.strip()}")
+                if descriptions:
+                    content = f"Extracted {len(images)} image(s). Vision: " + " ".join(descriptions)
+                    rationale = "; ".join(descriptions)
+                    confidence = 0.8
+                else:
+                    content = f"Extracted {len(images)} image(s); vision returned no content"
+            except Exception as e:
+                err_msg = str(e).strip()
+                if "RESOURCE_EXHAUSTED" in err_msg or "429" in err_msg or "quota" in err_msg.lower():
+                    content = f"Extracted {len(images)} image(s). Vision analysis skipped (API quota exceeded)."
+                else:
+                    content = f"Extracted {len(images)} image(s); vision call failed: {err_msg[:120]}"
+                rationale = content
     elif images:
         content = f"Extracted {len(images)} image(s) from PDF; GOOGLE_API_KEY not set, vision skipped"
         rationale = "GOOGLE_API_KEY not set; vision analysis skipped"

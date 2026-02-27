@@ -302,19 +302,21 @@ def search_theoretical_depth(
     }
     if os.environ.get("GOOGLE_API_KEY"):
         try:
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            model = os.environ.get("GOOGLE_GEMINI_MODEL", "gemini-2.0-flash")
-            llm = ChatGoogleGenerativeAI(model=model)
-            context = "\n\n".join((c.get("text", "") or "")[:400] for c in chunks[:8])
-            prompt = f"""Given this PDF excerpt, assess theoretical depth (terms: {', '.join(search_terms[:6])}). Reply in 1-2 sentences."""
-            if success_pattern:
-                prompt += f" Success looks like: {success_pattern[:150]}."
-            if failure_pattern:
-                prompt += f" Avoid: {failure_pattern[:150]}."
-            prompt += f"\n\nExcerpt:\n\n{context}"""
-            response = llm.invoke(prompt)
-            if hasattr(response, "content") and response.content:
-                result["llm_rationale"] = response.content.strip()
+            from src.llm import get_doc_llm
+            llm = get_doc_llm()
+            if llm:
+                context = "\n\n".join((c.get("text", "") or "")[:400] for c in chunks[:8])
+                prompt = f"""Given this PDF excerpt, assess theoretical depth (terms: {', '.join(search_terms[:6])}). Reply in 1-2 sentences."""
+                if success_pattern:
+                    prompt += f" Success looks like: {success_pattern[:150]}."
+                if failure_pattern:
+                    prompt += f" Avoid: {failure_pattern[:150]}."
+                prompt += f"\n\nExcerpt:\n\n{context}"""
+                response = llm.invoke(prompt)
+                if hasattr(response, "content") and response.content:
+                    result["llm_rationale"] = response.content.strip()
+            else:
+                result["llm_rationale"] = None
         except Exception:
             result["llm_rationale"] = None
     else:

@@ -1,58 +1,19 @@
-"""Judge nodes: Prosecutor, Defense, TechLead. Groq or Gemini (configurable); model configurable via env."""
+"""Judge nodes: Prosecutor, Defense, TechLead. Uses src.llm for LLM (Groq/Gemini)."""
 
 import json
-import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_groq import ChatGroq
 
+from src.llm import get_judge_llm, get_judge_llm_google, get_judge_llm_groq
 from src.rubric_loader import get_synthesis_rules
 from src.state import Evidence, JudicialOpinion
 
 
 JUDGE_RETRY_ATTEMPTS = 2
-GROQ_JUDGE_MODEL = os.environ.get("GROQ_JUDGE_MODEL", "llama-3.3-70b-versatile")
 EVIDENCE_SUMMARY_MAX_CHARS = 1200
-
-_judge_llm_groq: Any = None
-_judge_llm_google: Any = None
-
-
-def _get_llm():
-    """Prefer Groq; if JUDGE_PROVIDER=google or Groq unavailable, use Gemini when GOOGLE_API_KEY set."""
-    provider = (os.environ.get("JUDGE_PROVIDER") or "groq").strip().lower()
-    if provider == "google":
-        return _get_llm_google()
-    if os.environ.get("GROQ_API_KEY"):
-        return _get_llm_groq()
-    return _get_llm_google()
-
-
-def _get_llm_groq():
-    global _judge_llm_groq
-    if not os.environ.get("GROQ_API_KEY"):
-        return None
-    if _judge_llm_groq is None:
-        model = os.environ.get("GROQ_JUDGE_MODEL") or GROQ_JUDGE_MODEL
-        _judge_llm_groq = ChatGroq(model=model, temperature=0.6)
-    return _judge_llm_groq
-
-
-def _get_llm_google():
-    global _judge_llm_google
-    if not os.environ.get("GOOGLE_API_KEY"):
-        return None
-    if _judge_llm_google is None:
-        try:
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            model = os.environ.get("GOOGLE_GEMINI_MODEL", "gemini-2.0-flash")
-            _judge_llm_google = ChatGoogleGenerativeAI(model=model, temperature=0.6)
-        except Exception:
-            return None
-    return _judge_llm_google
 
 
 def _load_synthesis_rules() -> dict[str, str]:
@@ -117,7 +78,7 @@ def _opinion_for_dimension(
     evidence_text: str,
     system_prompt: str,
 ) -> JudicialOpinion:
-    llm = _get_llm()
+    llm = get_judge_llm()
     if llm is None:
         return JudicialOpinion(judge=judge_name, criterion_id=dimension.get("id", "unknown"), score=3, argument="No judge LLM (set GROQ_API_KEY or GOOGLE_API_KEY); placeholder opinion", cited_evidence=[])
     dim_id = dimension.get("id", "unknown")
@@ -193,8 +154,8 @@ You must respond with ONLY a valid JSON object, no other text. Use this exact sh
                         return result
                 except Exception:
                     pass
-            if (is_429 or is_400) and _get_llm_groq() is llm:
-                fallback = _get_llm_google()
+            if (is_429 or is_400) and get_judge_llm_groq() is llm:
+                fallback = get_judge_llm_google()
                 if fallback:
                     llm = fallback
                     try:
