@@ -1,0 +1,54 @@
+{
+  "project": "Automaton Auditor (TRP1 Week 2)",
+  "source_document": "TRP1 Challenge Week 2_ The Automaton Auditor.md",
+  "spec_file": "specs/spec.md",
+  "functional_spec": "specs/functional-spec.md",
+  "technical_spec": "specs/technical-spec.md",
+  "multi_model_stack_spec": "specs/multi-model-stack-spec.md",
+  "phase_folders": [
+    "specs/phase1-production-environment",
+    "specs/phase2-detective-layer",
+    "specs/phase3-judicial-layer",
+    "specs/phase4-supreme-court-and-feedback-loop"
+  ],
+  "source_files": [
+    "src/state.py",
+    "src/tools/repo_tools.py",
+    "src/tools/doc_tools.py",
+    "src/nodes/detectives.py",
+    "src/nodes/judges.py",
+    "src/nodes/justice.py",
+    "src/graph.py"
+  ],
+  "config_files": [
+    "pyproject.toml",
+    ".env.example",
+    "rubric.json"
+  ],
+  "docs_and_reports": [
+    "README.md",
+    "reports/interim_report.pdf",
+    "reports/final_report.pdf"
+  ],
+  "audit_dirs": [
+    "audit/report_onself_generated/",
+    "audit/report_onpeer_generated/",
+    "audit/report_bypeer_received/"
+  ],
+  "implementation_branches": [
+    "002-phase1-production-env",
+    "003-phase2-repo-tools",
+    "004-phase2-doc-tools",
+    "005-phase2-detective-nodes",
+    "006-phase3-judicial-layer",
+    "007-phase3-graph-orchestration",
+    "008-phase4-supreme-court",
+    "009-phase4-deliverables"
+  ],
+  "cursor_commands": [
+    "/speckit.plan on specs/spec.md",
+    "/speckit.tasks using plan.md and spec.md",
+    "/speckit.implement: create phase-based branches per phase folders, atomic commits, merge in phase order",
+    "/speckit.analyse: use multi-model-stack-spec and phase specs before implementation"
+  ]
+}
