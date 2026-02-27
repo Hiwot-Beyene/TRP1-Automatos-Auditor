@@ -5,7 +5,7 @@ Automaton Auditor — Digital Courtroom agent graph. Parallel detective nodes (R
 ## Supported Python and lock file
 
 - **Python:** 3.10, 3.11, 3.12 (see `requires-python` in `pyproject.toml`). Use one of these for compatibility.
-- **Lock file:** `uv.lock` is committed. Run `uv sync` for reproducible installs; after dependency changes run `uv lock` and commit the updated `uv.lock`.
+- **Dependency lock files:** `uv.lock` (Python) and `frontend/package-lock.json` (Node) are committed for reproducible installs. Run `uv sync` (and `npm install` in frontend); after dependency changes run `uv lock` / `npm install` and commit the updated lock file(s).
 
 ## Scripts and optional tooling
 
