@@ -3,13 +3,17 @@
 import json
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from src.graph import build_detective_graph
 from src.parallelism_checks import run_parallelism_checks
-from src.state import Evidence
+from src.state import AuditReport, Evidence
 
 app = FastAPI(title="Automaton Auditor API", version="0.1.0")
 app.add_middleware(
@@ -104,7 +108,17 @@ def run_audit(req: RunRequest) -> RunResponse:
         "rubric_dimensions": rubric_dimensions,
     })
     evidences = state.get("evidences") or {}
-    return RunResponse(evidences=serialize_evidences(evidences))
+    final_report = state.get("final_report")
+    if isinstance(final_report, AuditReport):
+        final_report = final_report.model_dump()
+    overall = None
+    if isinstance(final_report, dict):
+        overall = final_report.get("overall_score")
+    return RunResponse(
+        evidences=serialize_evidences(evidences),
+        final_report=final_report if isinstance(final_report, dict) else None,
+        overall_score=overall,
+    )
 
 
 @app.get("/api/parallelism-tests", response_model=ParallelismTestsResponse)
