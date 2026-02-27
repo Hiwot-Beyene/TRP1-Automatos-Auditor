@@ -9,7 +9,7 @@ Build forensic tools that don't just "read text" but "understand structure." Imp
 
 ## Scope
 
-- **RepoInvestigator (AST Detective):** Do not rely on Regex. Use Python `ast` or robust parser; sandboxed clone (tempfile), git log; `analyze_graph_structure(path)`, `extract_git_history(path)`. Optional LLM for interpretation/summary: MUST use **Groq Llama 3.1 70B** per [../multi-model-stack-spec.md](../multi-model-stack-spec.md).
+- **RepoInvestigator (AST Detective):** Do not rely on Regex. Use Python `ast` or robust parser; sandboxed clone (tempfile), git log; `analyze_graph_structure(path)`, `extract_git_history(path)`. Optional LLM for interpretation/summary: MUST use **Groq** per [../multi-model-stack-spec.md](../multi-model-stack-spec.md). Forensic evidence presented to judges: for state_management_rigor, evidence content MUST lead with explicit Pydantic_Evidence / Pydantic_JudicialOpinion / reducers_operator_add_ior flags when present; for safe_tool_engineering and structured_output_enforcement, forensic scan line (e.g. tempfile/subprocess/retry_logic) MUST appear first in evidence content. Structured-output forensic scan MUST include retry_logic when judges implementation uses retry (e.g. JUDGE_RETRY or attempt loop).
 - **DocAnalyst (Context Detective):** RAG-lite PDF ingestion; `ingest_pdf(path)`; chunked query; cross-reference with repo evidence. LLM for query/theoretical depth MUST use **Google Gemini 1.5 Flash**.
 - **VisionInspector (Multimodal Detective):** `extract_images_from_pdf(path)`; vision model for diagram analysis. MUST use **Google Gemini 1.5 Flash** (vision). Implementation and execution required for final deliverable.
 

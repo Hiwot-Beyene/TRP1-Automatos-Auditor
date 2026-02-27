@@ -9,7 +9,7 @@ Force the LLM to adhere to the "Digital Courtroom" protocol without hallucinatio
 
 ## Scope
 
-- **Structured output:** Judges use `.with_structured_output(JudicialOpinion)` or `.bind_tools()`; return score (int), reasoning (str), citations (list). If Judge returns free text, parser error and retry. Judge LLM MUST use **Groq Llama 3.1 70B** per [../multi-model-stack-spec.md](../multi-model-stack-spec.md).
+- **Structured output:** Judges use `.with_structured_output(JudicialOpinion)` or `.bind_tools()`; return score (int), reasoning (str), citations (list). On 400 or parse failure, retry with JSON-only invocation. If Judge returns free text, parser error and retry. Judge LLM: **Groq** (configurable model, default llama-3.3-70b-versatile) or **Gemini** when JUDGE_PROVIDER=google or on 429/400 fallback; see [../multi-model-stack-spec.md](../multi-model-stack-spec.md).
 - **Graph construction:** Detectives (Repo, Doc, Vision) run in parallel; EvidenceAggregator collects all evidence before Judges; Judges (Prosecutor, Defense, TechLead) run in parallel on same evidence per criterion.
 - **Constitution:** System prompts dynamically load Week 2 Rubric; `rubric.json` provided and loaded at runtime.
 
