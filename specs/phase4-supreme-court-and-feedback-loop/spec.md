@@ -33,4 +33,5 @@ Synthesize conflict and operationalize the swarm. ChiefJusticeNode with hardcode
 - Master spec: [../spec.md](../spec.md)
 - Functional: [../functional-spec.md](../functional-spec.md)
 - Technical: [../technical-spec.md](../technical-spec.md)
+- Multi-model stack: [../multi-model-stack-spec.md](../multi-model-stack-spec.md)
 - Challenge: `TRP1 Challenge Week 2_ The Automaton Auditor.md`

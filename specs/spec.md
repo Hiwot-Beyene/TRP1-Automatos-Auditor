@@ -15,6 +15,7 @@
 
 - **[functional-spec.md](functional-spec.md)** — *What* the system does: inputs/outputs, Protocol A (Forensic Evidence), Protocol B (Judicial Sentencing), synthesis rules, report structure, Tenx rubric.
 - **[technical-spec.md](technical-spec.md)** — *How* it is built: state schema, file layout, tool contracts, graph topology, rubric JSON, implementation phases, security.
+- **[multi-model-stack-spec.md](multi-model-stack-spec.md)** — *Which* model powers which node: Groq (RepoInvestigator + Judges), Gemini (DocAnalyst + VisionInspector), LangSmith (observability). Free-tier only; use for speckit.analyse and TDD.
 
 ## User Scenarios & Testing
 
@@ -76,4 +77,4 @@ FR-001–FR-012 and key entities are in [functional-spec.md](functional-spec.md)
 
 ## Assumptions
 
-Python 3.10+; uv; LangSmith; rubric.json 10 dimensions; VisionInspector implementation required (execution optional); peer-gradable repo. Full behavior in [functional-spec.md](functional-spec.md); full technical detail in [technical-spec.md](technical-spec.md).
+Python 3.10+; uv; LangSmith; rubric.json 10 dimensions. **Multi-model stack:** free-tier only — Groq (Llama 3.1 70B) for RepoInvestigator optional LLM and Judges; Google Gemini (1.5 Flash) for DocAnalyst and VisionInspector; LangSmith for observability. VisionInspector implementation and execution required for final deliverable. Peer-gradable repo. Full behavior in [functional-spec.md](functional-spec.md); full technical detail in [technical-spec.md](technical-spec.md); model assignment in [multi-model-stack-spec.md](multi-model-stack-spec.md).
