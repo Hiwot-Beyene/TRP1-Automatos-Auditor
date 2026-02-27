@@ -7,6 +7,22 @@
 
 ---
 
+## 1.1 Multi-Model Stack
+
+The system uses a **free-tier multi-model stack**. Which LLM powers which node is defined in [multi-model-stack-spec.md](multi-model-stack-spec.md). Summary:
+
+| Node(s) | Model / Service |
+|---------|-----------------|
+| RepoInvestigator (optional LLM) | Groq — Llama 3.1 70B |
+| Prosecutor, Defense, TechLead | Groq — Llama 3.1 70B |
+| DocAnalyst, VisionInspector | Google Gemini 1.5 Flash |
+| Chief Justice | No LLM (deterministic only) |
+| Observability | LangSmith |
+
+No OpenAI (or other paid) API is required for the default stack. Env vars: `GROQ_API_KEY`, `GOOGLE_API_KEY`, `LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY` (see multi-model-stack-spec and .env.example).
+
+---
+
 ## 1. Technical Context
 
 | Item | Choice |
@@ -90,7 +106,7 @@ See phase specs for phase-specific files. Full layout: src/state.py, src/tools/r
 
 ## 4. Tool Contracts
 
-RepoInvestigator: sandboxed clone (tempfile, subprocess.run with timeout and capture_output), extract_git_history(path), analyze_graph_structure(path) using AST (edges, decorators, inheritance; add_edge, add_conditional_edges, StateGraph, BaseModel, TypedDict, reducers); precise RepoCloneError for bad URL and auth failures. DocAnalyst: ingest_pdf(path), RAG-lite, cross-reference. VisionInspector: extract_images_from_pdf(path), vision model; implementation required, execution optional.
+RepoInvestigator: sandboxed clone (tempfile, subprocess.run with timeout and capture_output), extract_git_history(path), analyze_graph_structure(path) using AST (edges, decorators, inheritance; add_edge, add_conditional_edges, StateGraph, BaseModel, TypedDict, reducers); precise RepoCloneError for bad URL and auth failures. Optional LLM (Groq Llama 3.1 70B) for interpretation/summary per [multi-model-stack-spec.md](multi-model-stack-spec.md). DocAnalyst: ingest_pdf(path), RAG-lite; LLM for query/theoretical depth MUST use Gemini 1.5 Flash. VisionInspector: extract_images_from_pdf(path); vision analysis MUST use Gemini 1.5 Flash (vision); implementation and execution required for final deliverable.
 
 ---
 
@@ -102,7 +118,7 @@ START → [RepoInvestigator || DocAnalyst || VisionInspector] → EvidenceAggreg
 
 ## 6–7. Judicial and Chief Justice Requirements
 
-Judges: .with_structured_output(JudicialOpinion) or .bind_tools(); distinct personas; retry on free text. ChiefJustice: hardcoded rules only; AuditReport → Markdown file.
+Judges: MUST use Groq Llama 3.1 70B per [multi-model-stack-spec.md](multi-model-stack-spec.md). `.with_structured_output(JudicialOpinion)` or `.bind_tools()`; distinct personas; retry on free text. ChiefJustice: hardcoded rules only; AuditReport → Markdown file.
 
 ---
 
@@ -127,4 +143,4 @@ rubric_metadata, dimensions (id, name, target_artifact, forensic_instruction, su
 
 ## 10–12. Deliverables, Security, References
 
-Interim/Final per challenge document. Security: no os.system; sandbox; env-only secrets. References: [functional-spec.md](functional-spec.md), [spec.md](spec.md), challenge document.
+Interim/Final per challenge document. Security: no os.system; sandbox; env-only secrets. References: [functional-spec.md](functional-spec.md), [spec.md](spec.md), [multi-model-stack-spec.md](multi-model-stack-spec.md), challenge document.
