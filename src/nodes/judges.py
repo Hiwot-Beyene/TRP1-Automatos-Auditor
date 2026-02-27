@@ -4,20 +4,21 @@ import os
 from typing import Any, Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 
 from src.state import Evidence, JudicialOpinion
 
 
 JUDGE_RETRY_ATTEMPTS = 2
+GROQ_MODEL = "llama-3.1-70b-versatile"
 
 
 def _get_llm():
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
         return None
-    return ChatOpenAI(
-        model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+    return ChatGroq(
+        model=GROQ_MODEL,
         temperature=0.3,
         api_key=api_key,
     )
@@ -41,7 +42,7 @@ def _opinion_for_dimension(
 ) -> JudicialOpinion:
     llm = _get_llm()
     if llm is None:
-        return JudicialOpinion(judge=judge_name, criterion_id=dimension.get("id", "unknown"), score=3, argument="OPENAI_API_KEY not set; placeholder opinion", cited_evidence=[])
+        return JudicialOpinion(judge=judge_name, criterion_id=dimension.get("id", "unknown"), score=3, argument="GROQ_API_KEY not set; placeholder opinion", cited_evidence=[])
     structured_llm = llm.with_structured_output(JudicialOpinion)
     dim_id = dimension.get("id", "unknown")
     dim_name = dimension.get("name", "")
