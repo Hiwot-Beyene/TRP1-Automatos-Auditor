@@ -69,9 +69,7 @@ def _build_ollama(role: str, temperature: float) -> BaseChatModel | None:
         from langchain_ollama import ChatOllama
     except ImportError:
         return None
-    model = _env("OLLAMA_MODEL") or "llama3.2:3b"
-    if role == "vision":
-        model = _env("OLLAMA_VISION_MODEL") or "llama3.2:3b"
+    model = "llama3.2:3b"
     base = _env("OLLAMA_BASE_URL") or "http://localhost:11434"
     return ChatOllama(model=model, base_url=base, temperature=temperature)
 
@@ -135,6 +133,12 @@ _PROVIDER_BUILDERS: dict[str, Callable[[str, float], BaseChatModel | None]] = {
 _llm_cache: dict[tuple[str | None, float], BaseChatModel | None] = {}
 
 
+def clear_llm_cache():
+    """Clear the LLM cache to force fresh model instances."""
+    global _llm_cache
+    _llm_cache.clear()
+
+
 def _build_llm(provider_id: str, role: str, temperature: float) -> BaseChatModel | None:
     builder = _PROVIDER_BUILDERS.get(provider_id)
     if not builder:
@@ -153,7 +157,14 @@ def get_llm(role: str | None = None, temperature: float = 0.3, required: bool = 
     if cache_key in _llm_cache:
         out = _llm_cache[cache_key]
         if out is not None:
-            return out
+            if prov == "ollama":
+                cached_model = getattr(out, "model", None) if hasattr(out, "model") else None
+                if cached_model and cached_model != "llama3.2:3b":
+                    clear_llm_cache()
+                else:
+                    return out
+            else:
+                return out
     out = _build_llm(prov, role or "default", temperature)
     if out is None and prov != "ollama":
         out = _build_ollama(role or "default", temperature)
