@@ -71,7 +71,7 @@ def _build_ollama(role: str, temperature: float) -> BaseChatModel | None:
         return None
     model = _env("OLLAMA_MODEL") or "llama3.2:3b"
     if role == "vision":
-        model = _env("OLLAMA_VISION_MODEL") or "llava"
+        model = _env("OLLAMA_VISION_MODEL") or "llama3.2:3b"
     base = _env("OLLAMA_BASE_URL") or "http://localhost:11434"
     return ChatOllama(model=model, base_url=base, temperature=temperature)
 
@@ -157,8 +157,8 @@ def get_llm(role: str | None = None, temperature: float = 0.3, required: bool = 
     out = _build_llm(prov, role or "default", temperature)
     if out is None and prov != "ollama":
         out = _build_ollama(role or "default", temperature)
-    if out is None and prov != "openai":
-        out = _build_llm("openai", role or "default", temperature)
+    if out is None:
+        out = _build_ollama(role or "default", temperature)
     if out is None and not required:
         return None
     if out is None:
