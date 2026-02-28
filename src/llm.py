@@ -1,11 +1,8 @@
 """
-Configurable LLM layer: provider and role selected from env.
+LLM layer: Always uses Ollama with llama3.2:3b for all nodes.
 
-Single default: LLM_PROVIDER=ollama (local llama3.2:3b); or openai | openrouter | groq | gemini.
-Role overrides: JUDICIAL_PROVIDER, DETECTIVE_PROVIDER, FORENSIC_PROVIDER, VISION_PROVIDER.
-Vision: use VISION_PROVIDER=gemini (or openai/ollama with vision model) for image-capable nodes.
-
-Add a new provider by implementing a builder in _PROVIDER_BUILDERS and setting the env var.
+All LLM instances (judicial, detective, forensic, vision) use Ollama llama3.2:3b.
+Environment variables for provider selection are ignored - always uses Ollama.
 """
 
 from __future__ import annotations
@@ -26,15 +23,7 @@ def _env(key: str, default: str = "") -> str:
 
 
 def _provider(role: str | None) -> str:
-    if role == "judicial":
-        return (_env("JUDICIAL_PROVIDER") or _env("LLM_PROVIDER") or "ollama").lower()
-    if role == "detective":
-        return (_env("DETECTIVE_PROVIDER") or _env("VISION_PROVIDER") or _env("LLM_PROVIDER") or "ollama").lower()
-    if role == "forensic":
-        return (_env("FORENSIC_PROVIDER") or _env("LLM_PROVIDER") or "ollama").lower()
-    if role == "vision":
-        return (_env("VISION_PROVIDER") or _env("LLM_PROVIDER") or "ollama").lower()
-    return (_env("LLM_PROVIDER") or "ollama").lower()
+    return "ollama"
 
 
 def _build_openai(role: str, temperature: float) -> BaseChatModel | None:
@@ -140,6 +129,9 @@ def clear_llm_cache():
     _llm_cache.clear()
 
 
+clear_llm_cache()
+
+
 def _build_llm(provider_id: str, role: str, temperature: float) -> BaseChatModel | None:
     builder = _PROVIDER_BUILDERS.get(provider_id)
     if not builder:
@@ -149,61 +141,48 @@ def _build_llm(provider_id: str, role: str, temperature: float) -> BaseChatModel
 
 def get_llm(role: str | None = None, temperature: float = 0.3, required: bool = True) -> BaseChatModel | None:
     """
-    Return the chat model. Provider from LLM_PROVIDER (or role override).
+    Return the chat model. Always uses Ollama with llama3.2:3b.
     role: None (default), "judicial", "detective", "forensic", "vision".
-    If required=False, returns None when no API key / provider is configured.
+    If required=False, returns None when Ollama is unavailable.
     """
-    prov = _provider(role)
     cache_key = (role, temperature)
-    
-    if prov == "ollama":
-        clear_llm_cache()
-        if cache_key in _llm_cache:
-            del _llm_cache[cache_key]
     
     if cache_key in _llm_cache:
         out = _llm_cache[cache_key]
         if out is not None:
-            if prov == "ollama":
-                model_name = getattr(out, "model", None)
-                if model_name != "llama3.2:3b":
-                    logger.warning(f"Clearing cache: cached model '{model_name}' != 'llama3.2:3b'")
-                    clear_llm_cache()
-                    if cache_key in _llm_cache:
-                        del _llm_cache[cache_key]
-                else:
-                    return out
+            model_name = getattr(out, "model", None)
+            if model_name != "llama3.2:3b":
+                logger.warning(f"Clearing cache: cached model '{model_name}' != 'llama3.2:3b'")
+                clear_llm_cache()
             else:
                 return out
     
-    out = _build_llm(prov, role or "default", temperature)
-    if out is None and prov != "ollama":
-        out = _build_ollama(role or "default", temperature)
-    if out is None:
-        out = _build_ollama(role or "default", temperature)
+    out = _build_ollama(role or "default", temperature)
     if out is None and not required:
         return None
     if out is None:
-        logger.warning("No LLM available for provider=%s; no model specified.", prov)
+        logger.warning("Ollama is not available. Make sure Ollama is running and llama3.2:3b is installed.")
         raise NoModelProvidedError()
     
-    if prov == "ollama":
+    model_name = getattr(out, "model", None)
+    if model_name and model_name != "llama3.2:3b":
+        logger.error(f"Model name mismatch: expected 'llama3.2:3b', got '{model_name}'. Rebuilding...")
+        out = _build_ollama(role or "default", temperature)
         model_name = getattr(out, "model", None)
         if model_name and model_name != "llama3.2:3b":
-            logger.warning(f"Model name mismatch: expected 'llama3.2:3b', got '{model_name}'. Rebuilding...")
-            out = _build_ollama(role or "default", temperature)
+            raise ValueError(f"Failed to create Ollama model with 'llama3.2:3b'. Got '{model_name}' instead.")
     
     _llm_cache[cache_key] = out
     return out
 
 
 def get_vision_provider() -> str:
-    """Provider used for vision (image) tasks; influences message format (e.g. Gemini image block)."""
-    return _provider("vision")
+    """Provider used for vision (image) tasks. Always returns 'ollama'."""
+    return "ollama"
 
 
 def get_judicial_llm() -> BaseChatModel | None:
-    """Judges (Prosecutor, Defense, Tech Lead). Uses JUDICIAL_PROVIDER or LLM_PROVIDER."""
+    """Judges (Prosecutor, Defense, Tech Lead). Always uses Ollama llama3.2:3b."""
     return get_llm(role="judicial", temperature=0.3, required=False)
 
 
@@ -213,17 +192,17 @@ def get_judge_llm() -> Any:
 
 
 def get_vision_llm() -> BaseChatModel | None:
-    """Vision-capable model for VisionInspector. Uses VISION_PROVIDER or LLM_PROVIDER."""
+    """Vision-capable model for VisionInspector. Always uses Ollama llama3.2:3b."""
     return get_llm(role="vision", temperature=0.2, required=False)
 
 
 def get_detective_llm() -> BaseChatModel | None:
-    """Doc/vision detectives. Uses DETECTIVE_PROVIDER or VISION_PROVIDER or LLM_PROVIDER."""
+    """Doc/vision detectives. Always uses Ollama llama3.2:3b."""
     return get_llm(role="detective", temperature=0.2, required=False)
 
 
 def get_forensic_llm() -> BaseChatModel | None:
-    """Repo investigator. Uses FORENSIC_PROVIDER or LLM_PROVIDER."""
+    """Repo investigator. Always uses Ollama llama3.2:3b."""
     return get_llm(role="forensic", temperature=0.2, required=False)
 
 

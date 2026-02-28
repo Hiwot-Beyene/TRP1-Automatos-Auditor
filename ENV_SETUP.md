@@ -8,18 +8,22 @@ This document describes the required and optional environment variables for the 
 
 All LLM nodes use local Ollama. No API keys required.
 
-```bash
-# Ollama model to use (default: qwen2.5:7b)
-OLLAMA_MODEL=qwen2.5:7b
+**IMPORTANT:** The model is hardcoded to `llama3.2:3b` in the code. Environment variables like `OLLAMA_MODEL` or `OLLAMA_VISION_MODEL` are **ignored** to prevent model name conflicts.
 
+```bash
 # Ollama base URL (default: http://localhost:11434)
 OLLAMA_BASE_URL=http://localhost:11434
 ```
 
 **Before first run:** Pull the model:
 ```bash
-ollama pull qwen2.5:7b
+ollama pull llama3.2:3b
 ```
+
+**Note:** If you previously had `OLLAMA_VISION_MODEL=llava` or similar set, you may need to:
+1. Restart your Python application completely
+2. Clear any cached environment variables
+3. The code will now always use `llama3.2:3b` regardless of environment variables
 
 ## Optional Configuration
 
