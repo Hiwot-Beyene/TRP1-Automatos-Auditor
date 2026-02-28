@@ -71,6 +71,7 @@ def _build_ollama(role: str, temperature: float) -> BaseChatModel | None:
         return None
     model = "llama3.2:3b"
     base = _env("OLLAMA_BASE_URL") or "http://localhost:11434"
+    logger.info(f"Building Ollama model: {model} for role: {role}")
     return ChatOllama(model=model, base_url=base, temperature=temperature)
 
 
@@ -154,17 +155,27 @@ def get_llm(role: str | None = None, temperature: float = 0.3, required: bool = 
     """
     prov = _provider(role)
     cache_key = (role, temperature)
+    
+    if prov == "ollama":
+        clear_llm_cache()
+        if cache_key in _llm_cache:
+            del _llm_cache[cache_key]
+    
     if cache_key in _llm_cache:
         out = _llm_cache[cache_key]
         if out is not None:
             if prov == "ollama":
-                cached_model = getattr(out, "model", None) if hasattr(out, "model") else None
-                if cached_model and cached_model != "llama3.2:3b":
+                model_name = getattr(out, "model", None)
+                if model_name != "llama3.2:3b":
+                    logger.warning(f"Clearing cache: cached model '{model_name}' != 'llama3.2:3b'")
                     clear_llm_cache()
+                    if cache_key in _llm_cache:
+                        del _llm_cache[cache_key]
                 else:
                     return out
             else:
                 return out
+    
     out = _build_llm(prov, role or "default", temperature)
     if out is None and prov != "ollama":
         out = _build_ollama(role or "default", temperature)
@@ -175,6 +186,13 @@ def get_llm(role: str | None = None, temperature: float = 0.3, required: bool = 
     if out is None:
         logger.warning("No LLM available for provider=%s; no model specified.", prov)
         raise NoModelProvidedError()
+    
+    if prov == "ollama":
+        model_name = getattr(out, "model", None)
+        if model_name and model_name != "llama3.2:3b":
+            logger.warning(f"Model name mismatch: expected 'llama3.2:3b', got '{model_name}'. Rebuilding...")
+            out = _build_ollama(role or "default", temperature)
+    
     _llm_cache[cache_key] = out
     return out
 
