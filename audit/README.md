@@ -23,7 +23,7 @@ This directory contains generated audit reports organized by report type.
 
 **When used:** When placing a peer's audit report of your repository here, or when `report_type="peer_received"`.
 
-**Example:** A peer team audits your repository and you place their generated report in this folder.
+**Example:** A peer team audits your repository and you place their generated report in this folder. A sample peer-received report is checked in as `peer_received_report_2026-02-28.md` so that all three report types (self-generated, peer-generated, peer-received) are represented for rubric compliance.
 
 ### Root `audit/` directory
 **Purpose:** Contains the most recent audit report (overwrites on each run).

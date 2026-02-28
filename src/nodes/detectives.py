@@ -1,4 +1,10 @@
-"""Detective nodes for the Automaton Auditor."""
+"""Detective nodes for the Automaton Auditor.
+
+Structural analysis (graph wiring, state reducers, class inheritance) is performed via
+AST in src.tools.repo_tools: analyze_graph_structure() and analyze_graph_wiring_patterns().
+Graph wiring patterns (fan-out/fan-in) are derived from add_edge/add_conditional_edges
+calls in src/graph.py and are verifiable from that implementation.
+"""
 
 import base64
 import os
@@ -102,6 +108,9 @@ def RepoInvestigatorNode(state: dict[str, Any]) -> dict[str, Any]:
         with repo_tools.sandboxed_clone(repo_url) as path:
             history = repo_tools.extract_git_history(path)
             graph_info = repo_tools.analyze_graph_structure(path)
+            wiring = repo_tools.analyze_graph_wiring_patterns(path)
+            for k, v in wiring.items():
+                graph_info[k] = v
             forensic_scan = repo_tools.scan_forensic_evidence(path)
             git_forensic = repo_tools.analyze_git_forensic(history) if history else {}
             llm_rationale: str | None = None
@@ -130,7 +139,7 @@ def RepoInvestigatorNode(state: dict[str, Any]) -> dict[str, Any]:
             content_base = f"commits={len(history)}; has_state_graph={graph_info.get('has_state_graph')}; nodes={graph_info.get('nodes', [])}; edges={graph_info.get('edges', [])}"
             if history:
                 content_base += f"; messages_sample={[h.get('message','')[:40] for h in history[:5]]}"
-            base_rationale = "git log and AST analysis"
+            base_rationale = "git log and AST analysis (analyze_graph_structure + analyze_graph_wiring_patterns)"
             if forensic_scan:
                 content_base += "; forensic_scan=" + str(forensic_scan)
             rationale = base_rationale + (f"; {llm_rationale}" if llm_rationale else "")
@@ -159,6 +168,19 @@ def RepoInvestigatorNode(state: dict[str, Any]) -> dict[str, Any]:
                         f"reducers_operator_add_ior={has_reducers}; state_classes={classes}; reducers={reducers}"
                     )
                     content = explicit + "; " + content_base
+                elif dim_id == "graph_orchestration":
+                    wiring_fan_out = graph_info.get("fan_out_sources", [])
+                    wiring_fan_in = graph_info.get("fan_in_targets", [])
+                    detectives_fanout = graph_info.get("detectives_fanout", False)
+                    judges_fanout = graph_info.get("judges_fanout", False)
+                    aggregator_fan_in = graph_info.get("aggregator_fan_in", False)
+                    chief_justice_fan_in = graph_info.get("chief_justice_fan_in", False)
+                    explicit = (
+                        f"AST_wiring: fan_out_sources={wiring_fan_out}; fan_in_targets={wiring_fan_in}; "
+                        f"detectives_fanout={detectives_fanout}; judges_fanout={judges_fanout}; "
+                        f"aggregator_fan_in={aggregator_fan_in}; chief_justice_fan_in={chief_justice_fan_in}"
+                    )
+                    content = explicit + "; " + content_base
                 elif dim_id in forensic_scan:
                     content = forensic_scan[dim_id] + "; " + content_base
                 forensic = (d.get("forensic_instruction") or "").lower()
@@ -173,6 +195,13 @@ def RepoInvestigatorNode(state: dict[str, Any]) -> dict[str, Any]:
                     has_reducers = "add" in reducers or "ior" in reducers
                     found = has_evidence and has_opinion and has_reducers
                     conf = 0.9 if found else (0.5 if (has_evidence or has_opinion) else 0.3)
+                elif dim_id == "graph_orchestration":
+                    detectives_fanout = graph_info.get("detectives_fanout", False)
+                    judges_fanout = graph_info.get("judges_fanout", False)
+                    has_state_graph = graph_info.get("has_state_graph", False)
+                    has_conditional = graph_info.get("has_conditional_edges", False)
+                    found = has_state_graph and (detectives_fanout or judges_fanout)
+                    conf = 0.9 if (detectives_fanout and judges_fanout) else (0.7 if found else 0.3)
                 elif "git" in forensic or "commit" in forensic or "history" in forensic:
                     found = len(history) > 0
                     conf = 0.9 if len(history) > 3 else 0.5

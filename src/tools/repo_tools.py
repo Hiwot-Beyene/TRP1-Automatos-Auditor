@@ -279,6 +279,78 @@ def _arg_to_str(arg: ast.expr) -> str:
     return ""
 
 
+def analyze_graph_wiring_patterns(repo_path: str) -> dict[str, Any]:
+    """
+    AST-based structural analysis of graph wiring: fan-out and fan-in patterns.
+    Parses src/graph.py and extracts:
+    - add_edge / add_conditional_edges calls to build in-degree and out-degree per node
+    - fan_out_sources: nodes that have multiple outgoing edges (parallel branch starts)
+    - fan_in_targets: nodes that have multiple incoming edges (synchronization points)
+    - detectives_fanout: whether multiple detective nodes feed one aggregator
+    - judges_fanout: whether multiple judge nodes feed chief_justice
+    Verifiable from implementation: all structure derived from AST of graph.py.
+    """
+    path = Path(repo_path)
+    graph_file = path / "src" / "graph.py"
+    out: dict[str, Any] = {
+        "fan_out_sources": [],
+        "fan_in_targets": [],
+        "detectives_fanout": False,
+        "judges_fanout": False,
+        "aggregator_fan_in": False,
+        "chief_justice_fan_in": False,
+        "edges_by_source": {},
+        "edges_by_target": {},
+    }
+    if not graph_file.is_file():
+        return out
+    try:
+        text = graph_file.read_text(encoding="utf-8", errors="replace")
+        tree = ast.parse(text)
+    except (SyntaxError, OSError):
+        return out
+    edges: list[tuple[str, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            attr = node.func.attr
+            if attr == "add_edge" and len(node.args) >= 2:
+                src = _arg_to_str(node.args[0])
+                tgt = _arg_to_str(node.args[1])
+                if src and tgt:
+                    edges.append((src, tgt))
+            elif attr == "add_conditional_edges" and len(node.args) >= 3:
+                src = _arg_to_str(node.args[0])
+                if not src:
+                    continue
+                third = node.args[2]
+                if isinstance(third, ast.Dict) and third.values:
+                    for val in third.values:
+                        tgt = _arg_to_str(val)
+                        if tgt:
+                            edges.append((src, tgt))
+    by_src: dict[str, list[str]] = {}
+    by_tgt: dict[str, list[str]] = {}
+    for s, t in edges:
+        by_src.setdefault(s, []).append(t)
+        by_tgt.setdefault(t, []).append(s)
+    out["edges_by_source"] = {k: list(dict.fromkeys(v)) for k, v in by_src.items()}
+    out["edges_by_target"] = {k: list(dict.fromkeys(v)) for k, v in by_tgt.items()}
+    out["fan_out_sources"] = [n for n, tgts in by_src.items() if len(tgts) > 1]
+    out["fan_in_targets"] = [n for n, srcs in by_tgt.items() if len(srcs) > 1]
+    aggregators = ["evidence_aggregator", "sync_aggregator"]
+    judge_nodes = ["defense", "prosecutor", "tech_lead"]
+    detective_nodes = ["doc_analyst", "repo_investigator", "vision_inspector"]
+    for agg in aggregators:
+        if by_tgt.get(agg) and len(by_tgt[agg]) > 1:
+            out["aggregator_fan_in"] = True
+            break
+    if by_tgt.get("chief_justice"):
+        out["chief_justice_fan_in"] = len(by_tgt["chief_justice"]) >= 2
+    out["detectives_fanout"] = sum(1 for n in detective_nodes if by_src.get(n)) >= 2 and out["aggregator_fan_in"]
+    out["judges_fanout"] = sum(1 for n in judge_nodes if by_src.get(n)) >= 2 and out["chief_justice_fan_in"]
+    return out
+
+
 def scan_forensic_evidence(repo_path: str) -> dict[str, str]:
     """Scan clone for rubric-aligned evidence: safe_tool, structured_output, judicial_nuance, chief_justice_synthesis."""
     path = Path(repo_path)

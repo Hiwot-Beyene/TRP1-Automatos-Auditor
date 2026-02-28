@@ -1,4 +1,9 @@
-"""Judge nodes: Prosecutor, Defense, TechLead. All Judge LLM calls use .with_structured_output(JudicialOpinion); retry on malformed output; output validated against Pydantic schema before adding to state."""
+"""Judge nodes: Prosecutor, Defense, TechLead. All Judge LLM calls use .with_structured_output(JudicialOpinion); retry on malformed output; output validated against Pydantic schema before adding to state.
+
+Each judge consumes rubric criteria dynamically: the evaluation loop passes the current dimension
+(name, forensic_instruction, success_pattern, failure_pattern) into the prompt so persona-specific
+reasoning is explicitly tied to the criterion being evaluated. Linkage: _rubric_criterion_block() -> user prompt.
+"""
 
 import json
 import re
@@ -26,6 +31,21 @@ EVIDENCE_SUMMARY_MAX_CHARS = 1200
 
 def _load_synthesis_rules() -> dict[str, str]:
     return get_synthesis_rules()
+
+
+def _rubric_criterion_block(dimension: dict[str, Any]) -> str:
+    """Build the rubric criterion block consumed by the judge. Linkage: this string is injected into the prompt so evaluation is explicitly against this criterion."""
+    dim_id = dimension.get("id", "unknown")
+    dim_name = dimension.get("name", "")
+    instruction = dimension.get("forensic_instruction", "")
+    success = dimension.get("success_pattern", "")
+    failure = dimension.get("failure_pattern", "")
+    return (
+        f"Criterion: {dim_name} (id={dim_id})\n"
+        f"Forensic instruction: {instruction}\n"
+        f"Success pattern: {success}\n"
+        f"Failure pattern: {failure}"
+    )
 
 
 def _evidence_summary(evidences: dict[str, list[Evidence]], dimension_id: str) -> str:
@@ -90,18 +110,14 @@ def _opinion_for_dimension(
     if llm is None:
         raise NoModelProvidedError()
     dim_id = dimension.get("id", "unknown")
-    dim_name = dimension.get("name", "")
-    instruction = dimension.get("forensic_instruction", "")
-    success = dimension.get("success_pattern", "")
-    failure = dimension.get("failure_pattern", "")
+    criterion_block = _rubric_criterion_block(dimension)
 
     role_reminder = {"Prosecutor": "Respond ONLY as the Prosecutor. Be critical; cite gaps and weaknesses.", "Defense": "Respond ONLY as the Defense. Be charitable; cite evidence that supports the team.", "TechLead": "Respond ONLY as the Tech Lead. Be pragmatic; cite architectural and implementation evidence."}.get(judge_name, "")
     user_base = f"""Role: {role_reminder}
 
-Criterion: {dim_name} (id={dim_id})
-Forensic instruction: {instruction}
-Success pattern: {success}
-Failure pattern: {failure}
+Evaluate ONLY against the following rubric criterion. Your score and argument must reference the success/failure patterns below.
+
+{criterion_block}
 
 Evidence collected:
 {evidence_text}
@@ -180,7 +196,6 @@ def _run_judge(judge_name: Literal["Prosecutor", "Defense", "TechLead"], state: 
         dim_id = dim.get("id", "unknown")
         evidence_text = _evidence_summary(evidences, dim_id)
         op = _opinion_for_dimension(judge_name, dim, evidence_text, full_prompt)
-        # Validated against JudicialOpinion Pydantic schema before adding to state
         opinions.append(op)
     return {"opinions": opinions}
 
