@@ -28,7 +28,7 @@ def _get_semaphore() -> threading.Semaphore:
     return _semaphore
 
 
-def _execute_run(run_id: str, repo_url: str, pdf_path: str, rubric_dimensions: list[dict]) -> None:
+def _execute_run(run_id: str, repo_url: str, pdf_path: str, rubric_dimensions: list[dict], report_type: str | None = None) -> None:
     sem = _get_semaphore()
     sem.acquire()
     try:
@@ -38,12 +38,15 @@ def _execute_run(run_id: str, repo_url: str, pdf_path: str, rubric_dimensions: l
         try:
             from src.graph import build_detective_graph
             graph = build_detective_graph()
+            state_input = {
+                "repo_url": repo_url,
+                "pdf_path": pdf_path,
+                "rubric_dimensions": rubric_dimensions,
+            }
+            if report_type in ("self", "peer", "peer_received"):
+                state_input["report_type"] = report_type
             state = graph.invoke(
-                {
-                    "repo_url": repo_url,
-                    "pdf_path": pdf_path,
-                    "rubric_dimensions": rubric_dimensions,
-                },
+                state_input,
                 config={
                     "run_name": "Automaton Auditor",
                     "tags": ["audit", "api", "async"],
@@ -77,7 +80,7 @@ def _execute_run(run_id: str, repo_url: str, pdf_path: str, rubric_dimensions: l
         sem.release()
 
 
-def submit_run(repo_url: str, pdf_path: str, rubric_dimensions: list[dict]) -> str:
+def submit_run(repo_url: str, pdf_path: str, rubric_dimensions: list[dict], report_type: str | None = None) -> str:
     """Enqueue a run; returns run_id. Run executes in background."""
     run_id = str(uuid.uuid4())
     with _store_lock:
@@ -88,7 +91,7 @@ def submit_run(repo_url: str, pdf_path: str, rubric_dimensions: list[dict]) -> s
             "created_at": time.time(),
             "finished_at": None,
         }
-    _get_executor().submit(_execute_run, run_id, repo_url, pdf_path, rubric_dimensions)
+    _get_executor().submit(_execute_run, run_id, repo_url, pdf_path, rubric_dimensions, report_type)
     return run_id
 
 

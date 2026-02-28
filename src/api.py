@@ -45,6 +45,7 @@ class RunRequest(BaseModel):
     repo_url: str = ""
     pdf_path: str = ""
     rubric_dimensions: list[dict] | None = Field(default=None, description="Optional override; if omitted, rubric.json dimensions are used.")
+    report_type: str | None = Field(default=None, description="One of: self, peer, peer_received. Affects report label and output subdir under audit/.")
 
 
 class RunResponse(BaseModel):
@@ -126,12 +127,15 @@ def run_audit(
 
     if wait:
         graph = build_detective_graph()
+        state_input = {
+            "repo_url": repo_url,
+            "pdf_path": pdf_path,
+            "rubric_dimensions": rubric_dimensions,
+        }
+        if req.report_type in ("self", "peer", "peer_received"):
+            state_input["report_type"] = req.report_type
         state = graph.invoke(
-            {
-                "repo_url": repo_url,
-                "pdf_path": pdf_path,
-                "rubric_dimensions": rubric_dimensions,
-            },
+            state_input,
             config={
                 "run_name": "Automaton Auditor",
                 "tags": ["audit", "api", "sync"],
@@ -151,7 +155,7 @@ def run_audit(
             overall_score=overall,
         )
 
-    run_id = submit_run(repo_url, pdf_path, rubric_dimensions)
+    run_id = submit_run(repo_url, pdf_path, rubric_dimensions, req.report_type)
     return RunSubmittedResponse(run_id=run_id)
 
 

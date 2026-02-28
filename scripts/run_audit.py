@@ -46,6 +46,7 @@ def main():
             "repo_url": repo_url,
             "pdf_path": pdf_path,
             "rubric_dimensions": dimensions,
+            "report_type": args.mode,
             "audit_output_dir": str(audit_dir),
         },
         config={

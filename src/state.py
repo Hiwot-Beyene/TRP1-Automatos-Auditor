@@ -46,6 +46,7 @@ class AgentState(TypedDict, total=False):
     repo_url: str
     pdf_path: str
     rubric_dimensions: list[dict[str, Any]]
+    report_type: Optional[Literal["self", "peer", "peer_received"]]
     pdf_chunks: list[dict[str, Any]]
     pdf_images: list[dict[str, Any]]
     evidences: Annotated[dict[str, list[Evidence]], operator.ior]
